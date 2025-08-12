@@ -58,13 +58,16 @@
 
   // 今日の日付
   const today = new Date().toISOString().split('T')[0];
+  const todayDate = new Date(today);
 
-  // 日別に気圧をグルーピングし平均を計算
+  // 日別に気圧をグルーピングし平均を計算（未来データは除外）
   const daily = {};
   for(let i=0; i<times.length; i++){
-    const date = times[i].split('T')[0];
-    if(!daily[date]) daily[date] = [];
-    daily[date].push(pressures[i]);
+    const dateStr = times[i].split('T')[0];
+    const dateObj = new Date(dateStr);
+    if(dateObj > todayDate) continue; // 未来の日付はスキップ
+    if(!daily[dateStr]) daily[dateStr] = [];
+    daily[dateStr].push(pressures[i]);
   }
   const dates = Object.keys(daily).sort();
   const dailyAvg = dates.map(d => {
@@ -74,7 +77,6 @@
   });
 
   // ここに体調スコアを手動で設定（任意。日付が合わない場合はnull）
-  // 実際は入力画面やデータベースから取得する想定
   const symptomData = {
     '2025-07-29': 1,
     '2025-07-30': 1,

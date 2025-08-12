@@ -2,18 +2,18 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
-<title>気圧と体調グラフ</title>
+<title>気圧と体調グラフ（東京・過去14日間）</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   body { font-family: sans-serif; margin: 20px; background: #f8f9fa; }
-  h1 { font-size: 1.5em; margin-bottom: 12px; }
+  h1 { font-size: 1.4em; margin-bottom: 12px; }
   #toggleBtn { margin-bottom: 16px; padding: 8px 12px; cursor: pointer; }
   #chartContainer, #tableContainer {
     background: white;
-    border-radius: 8px;
+    border-radius: 10px;
     box-shadow: 0 0 10px rgba(0,0,0,0.1);
     padding: 20px;
-    max-width: 800px;
+    max-width: 900px;
     margin-bottom: 24px;
   }
   #tableContainer { display: none; max-height: 400px; overflow-y: auto; }
@@ -25,79 +25,134 @@
   }
   th { background: #f3f3f3; }
   tr.today { background: #fff7cc; font-weight: 700; }
+  .up { color: #1b6e20; }
+  .down { color: #c02828; }
+  .nochange { color: #666; }
 </style>
 </head>
 <body>
-
-<h1>気圧と体調の推移（5段階評価）</h1>
+<h1>過去14日間の東京の気圧と体調スコア</h1>
 <button id="toggleBtn">表に切り替え</button>
-
 <div id="chartContainer">
-  <canvas id="pressureChart" width="760" height="400"></canvas>
+  <canvas id="pressureChart"></canvas>
 </div>
-
 <div id="tableContainer">
   <table>
     <thead>
-      <tr><th>日付</th><th>気圧 (hPa)</th><th>体調スコア (1〜5)</th></tr>
+      <tr><th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>体調スコア (1〜5)</th></tr>
     </thead>
     <tbody id="dataBody"></tbody>
   </table>
 </div>
 
 <script>
-  const data = [
-    { date: '2024-07-01', pressure: 1005, symptom: 1 },
-    { date: '2024-07-05', pressure: 1008, symptom: 1 },
-    { date: '2024-07-10', pressure: 1003, symptom: 1 },
-    { date: '2024-07-15', pressure: 1006, symptom: 1 },
-    { date: '2024-07-20', pressure: 1009, symptom: 2 },
-    { date: '2024-07-25', pressure: 1012, symptom: 3 },
-    { date: '2024-08-01', pressure: 1015, symptom: 4 },
-    { date: '2024-08-05', pressure: 1014, symptom: 4 },
-    { date: '2024-08-10', pressure: 1010, symptom: 3 },
-    { date: '2024-08-12', pressure: 1006, symptom: 2 }
-  ];
+(async function() {
+  const lat = 35.6895;
+  const lon = 139.6917;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl&timezone=Asia/Tokyo&past_days=14`;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const res = await fetch(url);
+  const data = await res.json();
+  const times = data.hourly.time;
+  const pressures = data.hourly.pressure_msl;
 
-  // 表の生成
+  // 今日の日付
+  const today = new Date().toISOString().split('T')[0];
+
+  // 日別に気圧をグルーピングし平均を計算
+  const daily = {};
+  for(let i=0; i<times.length; i++){
+    const date = times[i].split('T')[0];
+    if(!daily[date]) daily[date] = [];
+    daily[date].push(pressures[i]);
+  }
+  const dates = Object.keys(daily).sort();
+  const dailyAvg = dates.map(d => {
+    const vals = daily[d];
+    const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+    return { date: d, avg: +(avg.toFixed(1)) };
+  });
+
+  // ここに体調スコアを手動で設定（任意。日付が合わない場合はnull）
+  // 実際は入力画面やデータベースから取得する想定
+  const symptomData = {
+    '2025-07-29': 1,
+    '2025-07-30': 1,
+    '2025-07-31': 1,
+    '2025-08-01': 1,
+    '2025-08-02': 2,
+    '2025-08-03': 2,
+    '2025-08-04': 3,
+    '2025-08-05': 3,
+    '2025-08-06': 4,
+    '2025-08-07': 4,
+    '2025-08-08': 4,
+    '2025-08-09': 3,
+    '2025-08-10': 3,
+    '2025-08-11': 2,
+    '2025-08-12': 2
+  };
+
+  // 表表示用
   const tbody = document.getElementById('dataBody');
-  data.forEach(({date, pressure, symptom}) => {
+  dailyAvg.forEach((item, i) => {
     const tr = document.createElement('tr');
-    if(date === todayStr) tr.classList.add('today');
-    tr.innerHTML = `<td>${date}</td><td>${pressure}</td><td>${symptom}</td>`;
+    if(item.date === today) tr.classList.add('today');
+
+    const change = i === 0 ? null : +(dailyAvg[i].avg - dailyAvg[i-1].avg).toFixed(1);
+    const changeTd = document.createElement('td');
+    if(i === 0){
+      changeTd.textContent = '—';
+      changeTd.classList.add('nochange');
+    } else if(change > 0){
+      changeTd.innerHTML = `▲ ${change} hPa`;
+      changeTd.classList.add('up');
+    } else if(change < 0){
+      changeTd.innerHTML = `▼ ${Math.abs(change)} hPa`;
+      changeTd.classList.add('down');
+    } else {
+      changeTd.textContent = '±0.0';
+      changeTd.classList.add('nochange');
+    }
+
+    tr.innerHTML = `<td>${item.date}</td><td>${item.avg}</td>`;
+    tr.appendChild(changeTd);
+
+    const symptomTd = document.createElement('td');
+    symptomTd.textContent = symptomData[item.date] ?? '-';
+    tr.appendChild(symptomTd);
+
     tbody.appendChild(tr);
   });
 
-  // Chart.js 設定
+  // グラフ表示
   const ctx = document.getElementById('pressureChart').getContext('2d');
-  const chart = new Chart(ctx, {
+  new Chart(ctx, {
     type: 'line',
     data: {
-      labels: data.map(d => d.date),
+      labels: dates,
       datasets: [
         {
           label: '気圧 (hPa)',
-          data: data.map(d => d.pressure),
+          data: dailyAvg.map(d => d.avg),
           yAxisID: 'yRight',
           borderColor: 'rgba(54, 162, 235, 1)',
           backgroundColor: 'rgba(54, 162, 235, 0.15)',
           fill: true,
           tension: 0.3,
           pointRadius: 4,
-          order: 2,
+          order: 2
         },
         {
           label: '体調スコア (1〜5)',
-          data: data.map(d => d.symptom),
+          data: dates.map(d => symptomData[d] ?? null),
           yAxisID: 'yLeft',
           borderColor: 'rgba(255, 99, 132, 1)',
           backgroundColor: 'rgba(255, 99, 132, 0.15)',
           fill: true,
           tension: 0.3,
           pointRadius: 4,
-          order: 1,
+          order: 1
         }
       ]
     },
@@ -112,15 +167,15 @@
           min: 0,
           max: 5,
           ticks: { stepSize: 1 },
-          title: { display: true, text: '体調スコア' },
+          title: { display: true, text: '体調スコア' }
         },
         yRight: {
           type: 'linear',
           position: 'right',
-          min: 990,
-          max: 1030,
+          min: Math.min(...dailyAvg.map(d => d.avg)) - 5,
+          max: Math.max(...dailyAvg.map(d => d.avg)) + 5,
           grid: { drawOnChartArea: false },
-          title: { display: true, text: '気圧 (hPa)' },
+          title: { display: true, text: '気圧 (hPa)' }
         },
         x: {
           title: { display: true, text: '日付' }
@@ -156,7 +211,8 @@
       toggleBtn.textContent = 'グラフに切り替え';
     }
   });
-</script>
 
+})();
+</script>
 </body>
 </html>

@@ -1,153 +1,83 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<title>過去14日間の東京の気圧</title>
+<canvas id="pressureChart" width="1200" height="400"></canvas>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-  body { font-family: sans-serif; margin: 20px; background: #f8f9fa; }
-  h1 { font-size: 1.4em; }
-  #chartContainer { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); margin-bottom: 16px; }
-  table { border-collapse: collapse; width: 100%; max-width: 760px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 0 8px rgba(0,0,0,0.06); }
-  th, td { padding: 8px 10px; text-align: center; border-bottom: 1px solid #eee; }
-  th { background:#f7f7f7; font-weight: 600; }
-  tr.today { background: #fff7cc; font-weight: 700; }
-  .up { color: #1b6e20; }     /* 上昇：緑 */
-  .down { color: #c02828; }   /* 下降：赤 */
-  .nochange { color: #666; }
-  @media (max-width: 800px) { #chartContainer, table { width: 100%; } }
-</style>
-</head>
-<body>
-<h1>過去14日間の東京の気圧</h1>
-<div id="chartContainer">
-  <canvas id="pressureChart"></canvas>
-</div>
-<div>
-  <table id="dailyTable">
-    <thead>
-      <tr><th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th></tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-</div>
 <script>
-(async function() {
-  const lat = 35.6895;
-  const lon = 139.6917;
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl&timezone=Asia/Tokyo&past_days=14`;
+fetch('https://api.open-meteo.com/v1/forecast?latitude=35.6895&longitude=139.6917&hourly=pressure_msl&timezone=Asia%2FTokyo&past_days=30')
+  .then(res => res.json())
+  .then(data => {
+    const times = data.hourly.time;
+    const pressures = data.hourly.pressure_msl;
 
-  const res = await fetch(url);
-  const data = await res.json();
-  const times = data.hourly.time; // array of ISO strings
-  const pressures = data.hourly.pressure_msl; // array of floats
+    // 日ごとの平均気圧計算
+    const dailyData = {};
+    times.forEach((time, i) => {
+      const date = time.split('T')[0];
+      if (!dailyData[date]) dailyData[date] = [];
+      dailyData[date].push(pressures[i]);
+    });
 
-  // --- 今日の日付 YYYY-MM-DD ---
-  const today = new Date().toISOString().split('T')[0];
+    const labels = Object.keys(dailyData);
+    const averages = labels.map(date => {
+      const arr = dailyData[date];
+      return (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1);
+    });
 
-  // --- グルーピング：日ごとの平均気圧を計算 ---
-  const daily = {}; // { '2025-08-01': [vals...] }
-  for (let i = 0; i < times.length; i++) {
-    const date = times[i].split('T')[0];
-    if (!daily[date]) daily[date] = [];
-    daily[date].push(pressures[i]);
-  }
+    // 前日比（矢印）
+    const changes = averages.map((val, i) => {
+      if (i === 0) return '';
+      const diff = val - averages[i - 1];
+      if (diff > 0) return '↑';
+      if (diff < 0) return '↓';
+      return '→';
+    });
 
-  // 日付順（過去14日分）
-  const dates = Object.keys(daily).sort();
-  const dailyAvg = dates.map(d => {
-    const vals = daily[d];
-    const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
-    return { date: d, avg: +(avg.toFixed(1)) };
-  });
+    const today = new Date().toISOString().split('T')[0];
 
-  // --- テーブル表示（前日差と矢印） ---
-  const tbody = document.querySelector('#dailyTable tbody');
-  for (let i = 0; i < dailyAvg.length; i++) {
-    const row = document.createElement('tr');
-    if (dailyAvg[i].date === today) row.classList.add('today');
-
-    const dateTd = document.createElement('td');
-    dateTd.textContent = dailyAvg[i].date;
-
-    const avgTd = document.createElement('td');
-    avgTd.textContent = dailyAvg[i].avg;
-
-    const changeTd = document.createElement('td');
-    if (i === 0) {
-      changeTd.textContent = '—';
-      changeTd.classList.add('nochange');
-    } else {
-      const diff = +(dailyAvg[i].avg - dailyAvg[i-1].avg).toFixed(1);
-      if (diff > 0) {
-        changeTd.innerHTML = `▲ ${diff} hPa`;
-        changeTd.classList.add('up');
-      } else if (diff < 0) {
-        changeTd.innerHTML = `▼ ${Math.abs(diff)} hPa`;
-        changeTd.classList.add('down');
-      } else {
-        changeTd.textContent = '±0.0';
-        changeTd.classList.add('nochange');
-      }
-    }
-
-    row.appendChild(dateTd);
-    row.appendChild(avgTd);
-    row.appendChild(changeTd);
-    tbody.appendChild(row);
-  }
-
-  // --- グラフ（hourly） ---
-  const ctx = document.getElementById('pressureChart').getContext('2d');
-
-  // Chart plugin to highlight today's vertical band based on hourly times
-  const highlightToday = {
-    id: 'highlightToday',
-    beforeDraw(chart) {
-      const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
-      // find first and last index in times that match today
-      const firstIndex = times.findIndex(t => t.startsWith(today));
-      const lastIndex = times.map((t,i)=>t.startsWith(today)?i:-1).filter(i=>i>=0).pop();
-      if (firstIndex >= 0 && lastIndex >= 0) {
-        const total = times.length;
-        const pixelPerIndex = (right - left) / total;
-        const xStart = left + pixelPerIndex * firstIndex;
-        const xEnd = left + pixelPerIndex * (lastIndex + 1);
-        ctx.save();
-        ctx.fillStyle = 'rgba(200,200,200,0.25)';
-        ctx.fillRect(xStart, top, xEnd - xStart, bottom - top);
-        ctx.restore();
-      }
-    }
-  };
-
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: times.map(t => t.replace('T', ' ')),
-      datasets: [{
-        label: '気圧 (hPa)',
-        data: pressures,
-        borderColor: 'rgba(54, 162, 235, 1)',
-        backgroundColor: 'rgba(54, 162, 235, 0.15)',
-        fill: true,
-        tension: 0.2,
-        pointRadius: 0
-      }]
-    },
-    options: {
-      parsing: false,
-      normalized: true,
-      scales: {
-        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12 } },
-        y: { suggestedMin: Math.min(...pressures)-5, suggestedMax: Math.max(...pressures)+5 }
+    // Chart.js
+    const ctx = document.getElementById('pressureChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '平均気圧 (hPa)',
+          data: averages,
+          borderColor: 'blue',
+          fill: false,
+          tension: 0.1
+        }]
       },
-      plugins: { legend: { display: true } }
-    },
-    plugins: [highlightToday]
-  });
+      options: {
+        responsive: false,
+        scales: {
+          x: {
+            ticks: {
+              callback: function(val, index) {
+                const date = labels[index];
+                return date === today ? '★' + date : date;
+              }
+            },
+            grid: {
+              color: ctx => {
+                const date = labels[ctx.index];
+                return date === today ? '#ccc' : '#eee';
+              }
+            }
+          }
+        }
+      }
+    });
 
-})();
+    // 表作成
+    let tableHTML = '<table border="1" style="border-collapse:collapse;margin-top:10px;">';
+    tableHTML += '<tr><th>日付</th><th>平均気圧</th><th>変化</th></tr>';
+    labels.forEach((date, i) => {
+      tableHTML += `<tr${date === today ? ' style="background-color:lightgray;"' : ''}>` +
+                   `<td><b>${date}</b></td>` +
+                   `<td>${averages[i]}</td>` +
+                   `<td>${changes[i]}</td>` +
+                   `</tr>`;
+    });
+    tableHTML += '</table>';
+    document.body.innerHTML += tableHTML;
+  });
 </script>
-</body>
-</html>

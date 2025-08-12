@@ -3,59 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <title>過去14日間の気圧</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        table { border-collapse: collapse; width: 100%; max-width: 500px; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-        th { background-color: #f0f0f0; }
-        .today { background-color: yellow; font-weight: bold; }
+        body {
+            font-family: sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+        }
+        canvas {
+            background: #fff;
+        }
     </style>
 </head>
 <body>
-    <h1>過去14日間の気圧</h1>
-    <table id="pressure-table">
-        <thead>
-            <tr><th>日付</th><th>平均気圧 (hPa)</th></tr>
-        </thead>
-        <tbody></tbody>
-    </table>
-
+    <h1>過去14日間の気圧（東京）</h1>
+    <canvas id="pressureChart" width="800" height="400"></canvas>
     <script>
-        async function fetchPressure() {
-            const now = new Date();
-            const endDate = now.toISOString().split('T')[0];
-            const startDate = new Date(now);
-            startDate.setDate(startDate.getDate() - 13); // 14日分
-            const startStr = startDate.toISOString().split('T')[0];
+        // 今日の日付を YYYY-MM-DD 形式で取得
+        const todayStr = new Date().toISOString().split('T')[0];
 
-            const url = `https://archive-api.open-meteo.com/v1/archive?latitude=35.6895&longitude=139.6917&start_date=${startStr}&end_date=${endDate}&hourly=surface_pressure&timezone=Asia%2FTokyo`;
-
-            const res = await fetch(url);
-            const data = await res.json();
-
-            const tableBody = document.querySelector("#pressure-table tbody");
-
-            let dailyData = {};
-
-            // 日ごとの平均気圧を計算
-            data.hourly.time.forEach((timeStr, i) => {
-                const date = timeStr.split('T')[0];
-                if (!dailyData[date]) dailyData[date] = [];
-                dailyData[date].push(data.hourly.surface_pressure[i]);
-            });
-
-            Object.keys(dailyData).forEach(date => {
-                const avg = (dailyData[date].reduce((a, b) => a + b, 0) / dailyData[date].length).toFixed(1);
-                const tr = document.createElement("tr");
-                if (date === endDate) {
-                    tr.classList.add("today");
-                }
-                tr.innerHTML = `<td>${date}</td><td>${avg}</td>`;
-                tableBody.appendChild(tr);
-            });
+        // 過去14日分の日付配列
+        const dates = [];
+        for (let i = 13; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            dates.push(d.toISOString().split('T')[0]);
         }
 
-        fetchPressure();
+        // ダミー気圧データ（本番はAPIなどから取得可能）
+        const pressures = dates.map(() => (Math.random() * 10 + 1005).toFixed(1));
+
+        // Chart.js プラグインで今日の背景だけ塗る
+        const highlightToday = {
+            id: 'highlightToday',
+            beforeDraw(chart) {
+                const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
+                const todayIndex = dates.indexOf(todayStr);
+                if (todayIndex !== -1) {
+                    const barWidth = (right - left) / dates.length;
+                    const xPos = left + barWidth * todayIndex;
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(200, 200, 200, 0.3)';
+                    ctx.fillRect(xPos, top, barWidth, bottom - top);
+                    ctx.restore();
+                }
+            }
+        };
+
+        new Chart(document.getElementById('pressureChart'), {
+            type: 'line',
+            data: {
+                labels: dates.map(date => date === todayStr ? `**${date}**` : date),
+                datasets: [{
+                    label: '気圧(hPa)',
+                    data: pressures,
+                    borderColor: 'blue',
+                    fill: false,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                }
+            },
+            plugins: [highlightToday]
+        });
     </script>
 </body>
 </html>

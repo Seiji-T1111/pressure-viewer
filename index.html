@@ -2,177 +2,119 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>過去30日間の気圧データ</title>
+<title>気圧と体調記録</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    margin: 20px;
-  }
-  .hidden {
-    display: none;
-  }
-  .table-container {
-    max-height: 400px;
-    overflow-y: auto;
-    border: 1px solid #ccc;
-  }
-  table {
-    border-collapse: collapse;
-    width: 100%;
-  }
-  th, td {
-    padding: 6px 8px;
-    border: 1px solid #ccc;
-    text-align: center;
-  }
-  .today {
-    background-color: #e0e0e0;
-    font-weight: bold;
-  }
-  .up {
-    color: green;
-  }
-  .down {
-    color: red;
-  }
+  body { font-family: sans-serif; }
+  .container { max-width: 900px; margin: auto; }
+  canvas { background: #fdfdfd; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+  .toggle-btn { margin: 10px 0; padding: 6px 10px; }
 </style>
 </head>
 <body>
-
-<h1>過去30日間の気圧データ</h1>
-<button id="toggleView">表に切り替え</button>
-
-<div id="chartContainer">
-  <canvas id="pressureChart" width="800" height="400"></canvas>
-</div>
-
-<div id="tableContainer" class="hidden">
-  <div class="table-container">
+<div class="container">
+  <h2>気圧と体調の記録</h2>
+  <button class="toggle-btn" onclick="toggleView()">グラフ / 表 切り替え</button>
+  <div id="chartContainer">
+    <canvas id="pressureChart"></canvas>
+  </div>
+  <div id="tableContainer" style="display:none; overflow-x: scroll; max-height: 400px;">
     <table>
       <thead>
-        <tr>
-          <th>日付</th>
-          <th>気圧(hPa)</th>
-          <th>変化</th>
-        </tr>
+        <tr><th>日付</th><th>気圧(hPa)</th><th>気圧変化</th><th>体調メモ</th></tr>
       </thead>
-      <tbody id="pressureTableBody"></tbody>
+      <tbody id="dataBody"></tbody>
     </table>
   </div>
 </div>
 
 <script>
-  // ▼ ダミーデータ生成（本来はAPIから取得する）
-  const today = new Date();
-  const labels = [];
-  const data = [];
-  for (let i = 29; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(today.getDate() - i);
-    const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
-    labels.push(dateStr);
-    // 1000〜1025あたりのランダム気圧
-    data.push(Math.round(1000 + Math.random() * 25));
-  }
+// ダミーデータ生成（1か月分）
+const dates = [];
+const pressures = [];
+const memos = {};
+let currentPressure = 1010;
 
-  // ▼ Chart.js グラフ設定
-  const ctx = document.getElementById('pressureChart').getContext('2d');
-  const todayIndex = labels.length - 1;
-  const pressureChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: '気圧 (hPa)',
-        data: data,
-        borderColor: 'blue',
-        fill: false,
-        tension: 0.1
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { display: true }
-      },
-      scales: {
-        x: {
-          ticks: {
-            color: ctx => ctx.index === todayIndex ? 'black' : 'gray',
-            font: ctx => ctx.index === todayIndex ? { weight: 'bold' } : {}
+for (let i = 0; i < 30; i++) {
+  const date = new Date();
+  date.setDate(date.getDate() - (29 - i));
+  const label = `${date.getMonth()+1}/${date.getDate()}`;
+  dates.push(label);
+  // 気圧はランダムで変化
+  currentPressure += (Math.random() - 0.5) * 6;
+  pressures.push(Math.round(currentPressure * 10) / 10);
+
+  // 体調メモ（サンプル）
+  if (i % 5 === 0) memos[label] = "頭痛";
+  if (i % 7 === 0) memos[label] = "だるい";
+  if (i % 9 === 0) memos[label] = "元気";
+}
+
+// 気圧変化（前日比）
+function getPressureChange(i) {
+  if (i === 0) return "-";
+  const diff = pressures[i] - pressures[i-1];
+  return (diff > 0 ? "+" : "") + diff.toFixed(1);
+}
+
+// 表データ出力
+const tbody = document.getElementById("dataBody");
+dates.forEach((d, i) => {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td>${d}</td><td>${pressures[i]}</td><td>${getPressureChange(i)}</td><td>${memos[d] || ""}</td>`;
+  tbody.appendChild(tr);
+});
+
+// Chart.js 設定
+const ctx = document.getElementById('pressureChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: dates,
+    datasets: [{
+      label: '気圧(hPa)',
+      data: pressures,
+      borderColor: 'blue',
+      fill: false,
+      tension: 0.3,
+      pointBackgroundColor: dates.map(d => memos[d] ? 'red' : 'blue'),
+      pointRadius: dates.map(d => memos[d] ? 6 : 3),
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      tooltip: {
+        callbacks: {
+          afterLabel: function(context) {
+            const date = context.label;
+            return memos[date] ? `体調: ${memos[date]}` : '';
           }
         }
       }
     },
-    plugins: [{
-      id: 'highlightToday',
-      beforeDraw: (chart) => {
-        const chartArea = chart.chartArea;
-        const xAxis = chart.scales.x;
-        const index = todayIndex;
-        const left = xAxis.getPixelForValue(index - 0.5);
-        const right = xAxis.getPixelForValue(index + 0.5);
-        const ctx = chart.ctx;
-        ctx.save();
-        ctx.fillStyle = '#e0e0e0';
-        ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
-        ctx.restore();
+    scales: {
+      y: {
+        suggestedMin: 990,
+        suggestedMax: 1030
       }
-    }]
-  });
-
-  // ▼ 表の生成
-  const tbody = document.getElementById('pressureTableBody');
-  for (let i = 0; i < labels.length; i++) {
-    const row = document.createElement('tr');
-    if (i === todayIndex) row.classList.add('today');
-
-    const dateCell = document.createElement('td');
-    dateCell.textContent = labels[i];
-    row.appendChild(dateCell);
-
-    const pressureCell = document.createElement('td');
-    pressureCell.textContent = data[i];
-    row.appendChild(pressureCell);
-
-    const changeCell = document.createElement('td');
-    if (i > 0) {
-      const diff = data[i] - data[i - 1];
-      if (diff > 0) {
-        changeCell.textContent = `↑ ${diff}`;
-        changeCell.classList.add('up');
-      } else if (diff < 0) {
-        changeCell.textContent = `↓ ${Math.abs(diff)}`;
-        changeCell.classList.add('down');
-      } else {
-        changeCell.textContent = '-';
-      }
-    } else {
-      changeCell.textContent = '-';
     }
-    row.appendChild(changeCell);
-
-    tbody.appendChild(row);
   }
+});
 
-  // ▼ 切り替えボタン
-  document.getElementById('toggleView').addEventListener('click', () => {
-    const chartContainer = document.getElementById('chartContainer');
-    const tableContainer = document.getElementById('tableContainer');
-    const btn = document.getElementById('toggleView');
-
-    if (chartContainer.classList.contains('hidden')) {
-      chartContainer.classList.remove('hidden');
-      tableContainer.classList.add('hidden');
-      btn.textContent = '表に切り替え';
-    } else {
-      chartContainer.classList.add('hidden');
-      tableContainer.classList.remove('hidden');
-      btn.textContent = 'グラフに切り替え';
-    }
-  });
+function toggleView() {
+  const chartDiv = document.getElementById('chartContainer');
+  const tableDiv = document.getElementById('tableContainer');
+  if (chartDiv.style.display === 'none') {
+    chartDiv.style.display = '';
+    tableDiv.style.display = 'none';
+  } else {
+    chartDiv.style.display = 'none';
+    tableDiv.style.display = '';
+  }
+}
 </script>
-
 </body>
 </html>

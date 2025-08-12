@@ -2,46 +2,58 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>過去14日間の天気（東京）</title>
+<title>過去14日間の東京の気圧</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-  body { font-family: Arial, sans-serif; margin: 20px; }
-  table { border-collapse: collapse; width: 100%; max-width: 500px; }
-  th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
-  th { background: #f2f2f2; }
+  body { font-family: sans-serif; margin: 20px; background: #f8f9fa; }
+  h1 { font-size: 1.4em; }
+  #chartContainer { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
 </style>
 </head>
 <body>
-<h1>過去14日間の天気（東京）</h1>
-<table id="weather-table">
-  <thead>
-    <tr>
-      <th>日付</th>
-      <th>最高気温 (°C)</th>
-      <th>最低気温 (°C)</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
-
+<h1>過去14日間の東京の気圧</h1>
+<div id="chartContainer">
+  <canvas id="pressureChart"></canvas>
+</div>
 <script>
-const latitude = 35.6895; // 東京
-const longitude = 139.6917;
+(async function() {
+  const lat = 35.6895;
+  const lon = 139.6917;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl&timezone=Asia/Tokyo&past_days=14`;
 
-fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&past_days=14&daily=temperature_2m_max,temperature_2m_min&timezone=Asia/Tokyo`)
-  .then(response => response.json())
-  .then(data => {
-    const dates = data.daily.time;
-    const maxTemps = data.daily.temperature_2m_max;
-    const minTemps = data.daily.temperature_2m_min;
+  const res = await fetch(url);
+  const data = await res.json();
+  const times = data.hourly.time;
+  const pressures = data.hourly.pressure_msl;
 
-    const tbody = document.querySelector("#weather-table tbody");
-    dates.forEach((date, i) => {
-      const row = document.createElement("tr");
-      row.innerHTML = `<td>${date}</td><td>${maxTemps[i]}</td><td>${minTemps[i]}</td>`;
-      tbody.appendChild(row);
-    });
-  })
-  .catch(error => console.error("データ取得エラー:", error));
+  new Chart(document.getElementById('pressureChart'), {
+    type: 'line',
+    data: {
+      labels: times.map(t => t.replace('T', ' ')),
+      datasets: [{
+        label: '気圧 (hPa)',
+        data: pressures,
+        borderColor: 'rgba(54, 162, 235, 1)',
+        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+        fill: true,
+        tension: 0.2
+      }]
+    },
+    options: {
+      scales: {
+        x: {
+          ticks: {
+            maxRotation: 0
+          }
+        },
+        y: {
+          suggestedMin: 980,
+          suggestedMax: 1030
+        }
+      }
+    }
+  });
+})();
 </script>
 </body>
 </html>

@@ -1,65 +1,61 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>過去14日間の気圧グラフ</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta charset="UTF-8">
+    <title>過去14日間の気圧</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        table { border-collapse: collapse; width: 100%; max-width: 500px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        th { background-color: #f0f0f0; }
+        .today { background-color: yellow; font-weight: bold; }
+    </style>
 </head>
 <body>
-  <h2>過去14日間の気圧変化（東京）</h2>
-  <canvas id="pressureChart" width="800" height="400"></canvas>
+    <h1>過去14日間の気圧</h1>
+    <table id="pressure-table">
+        <thead>
+            <tr><th>日付</th><th>平均気圧 (hPa)</th></tr>
+        </thead>
+        <tbody></tbody>
+    </table>
 
-  <script>
-    // 東京の緯度経度
-    const latitude = 35.6895;
-    const longitude = 139.6917;
+    <script>
+        async function fetchPressure() {
+            const now = new Date();
+            const endDate = now.toISOString().split('T')[0];
+            const startDate = new Date(now);
+            startDate.setDate(startDate.getDate() - 13); // 14日分
+            const startStr = startDate.toISOString().split('T')[0];
 
-    // 今日と14日前の日付を計算
-    const today = new Date();
-    const endDate = today.toISOString().split('T')[0];
-    const startDate = new Date(today);
-    startDate.setDate(today.getDate() - 13); // 今日含めて14日間
-    const startDateStr = startDate.toISOString().split('T')[0];
+            const url = `https://archive-api.open-meteo.com/v1/archive?latitude=35.6895&longitude=139.6917&start_date=${startStr}&end_date=${endDate}&hourly=surface_pressure&timezone=Asia%2FTokyo`;
 
-    // API URL
-    const apiUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude}&longitude=${longitude}&start_date=${startDateStr}&end_date=${endDate}&hourly=pressure_msl&timezone=Asia%2FTokyo`;
+            const res = await fetch(url);
+            const data = await res.json();
 
-    fetch(apiUrl)
-      .then(response => response.json())
-      .then(data => {
-        const times = data.hourly.time;
-        const pressures = data.hourly.pressure_msl;
+            const tableBody = document.querySelector("#pressure-table tbody");
 
-        const ctx = document.getElementById('pressureChart').getContext('2d');
-        new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: times,
-            datasets: [{
-              label: '気圧 (hPa)',
-              data: pressures,
-              borderColor: 'blue',
-              backgroundColor: 'rgba(0,0,255,0.1)',
-              fill: true,
-              tension: 0.2
-            }]
-          },
-          options: {
-            scales: {
-              x: {
-                ticks: { maxTicksLimit: 14 },
-                title: { display: true, text: '日付' }
-              },
-              y: {
-                title: { display: true, text: 'hPa' }
-              }
-            }
-          }
-        });
-      })
-      .catch(err => {
-        console.error('データ取得エラー:', err);
-      });
-  </script>
+            let dailyData = {};
+
+            // 日ごとの平均気圧を計算
+            data.hourly.time.forEach((timeStr, i) => {
+                const date = timeStr.split('T')[0];
+                if (!dailyData[date]) dailyData[date] = [];
+                dailyData[date].push(data.hourly.surface_pressure[i]);
+            });
+
+            Object.keys(dailyData).forEach(date => {
+                const avg = (dailyData[date].reduce((a, b) => a + b, 0) / dailyData[date].length).toFixed(1);
+                const tr = document.createElement("tr");
+                if (date === endDate) {
+                    tr.classList.add("today");
+                }
+                tr.innerHTML = `<td>${date}</td><td>${avg}</td>`;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        fetchPressure();
+    </script>
 </body>
 </html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>東京の気圧履歴（1年間）</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: sans-serif; margin: 20px; background: #f8f9fa; }
+  h1 { font-size: 1.4em; }
+  #chartContainer { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+</style>
+</head>
+<body>
+<h1>東京の気圧履歴（最大1年間）</h1>
+<p>ページを開くたびに最新の気圧データを自動取得して保存。過去分を振り返れます。</p>
+<div id="chartContainer">
+  <canvas id="pressureChart"></canvas>
+</div>
+<script>
+(async function() {
+  const STORAGE_KEY = 'tokyo_pressure_history';
+  const lat = 35.6895;
+  const lon = 139.6917;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl&timezone=Asia/Tokyo&past_days=1`;
+
+  // 既存データ読み込み
+  let history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+  // 最新データ取得
+  const res = await fetch(url);
+  const data = await res.json();
+  const times = data.hourly.time;
+  const pressures = data.hourly.pressure_msl;
+
+  // 新しいデータを履歴に追加（重複を除く）
+  times.forEach((t, i) => {
+    if (!history.find(h => h.time === t)) {
+      history.push({ time: t, pressure: pressures[i] });
+    }
+  });
+
+  // 1年間分だけ保持（8760時間）
+  if (history.length > 8760) {
+    history = history.slice(history.length - 8760);
+  }
+
+  // 保存
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+
+  // グラフ描画
+  new Chart(document.getElementById('pressureChart'), {
+    type: 'line',
+    data: {
+      labels: history.map(h => h.time),
+      datasets: [{
+        label: '気圧 (hPa)',
+        data: history.map(h => h.pressure),
+        borderColor: 'rgba(54, 162, 235, 1)',
+        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+        fill: true,
+        tension: 0.2
+      }]
+    },
+    options: {
+      scales: {
+        x: {
+          ticks: {
+            maxRotation: 0,
+            callback: function(val, index) {
+              return history[index].time.replace('T', ' ');
+            }
+          }
+        },
+        y: {
+          suggestedMin: 980,
+          suggestedMax: 1030
+        }
+      }
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,83 +1,178 @@
-<canvas id="pressureChart" width="1200" height="400"></canvas>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>過去30日間の気圧データ</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+  }
+  .hidden {
+    display: none;
+  }
+  .table-container {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  th, td {
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    text-align: center;
+  }
+  .today {
+    background-color: #e0e0e0;
+    font-weight: bold;
+  }
+  .up {
+    color: green;
+  }
+  .down {
+    color: red;
+  }
+</style>
+</head>
+<body>
+
+<h1>過去30日間の気圧データ</h1>
+<button id="toggleView">表に切り替え</button>
+
+<div id="chartContainer">
+  <canvas id="pressureChart" width="800" height="400"></canvas>
+</div>
+
+<div id="tableContainer" class="hidden">
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>日付</th>
+          <th>気圧(hPa)</th>
+          <th>変化</th>
+        </tr>
+      </thead>
+      <tbody id="pressureTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
 <script>
-fetch('https://api.open-meteo.com/v1/forecast?latitude=35.6895&longitude=139.6917&hourly=pressure_msl&timezone=Asia%2FTokyo&past_days=30')
-  .then(res => res.json())
-  .then(data => {
-    const times = data.hourly.time;
-    const pressures = data.hourly.pressure_msl;
+  // ▼ ダミーデータ生成（本来はAPIから取得する）
+  const today = new Date();
+  const labels = [];
+  const data = [];
+  for (let i = 29; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(today.getDate() - i);
+    const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+    labels.push(dateStr);
+    // 1000〜1025あたりのランダム気圧
+    data.push(Math.round(1000 + Math.random() * 25));
+  }
 
-    // 日ごとの平均気圧計算
-    const dailyData = {};
-    times.forEach((time, i) => {
-      const date = time.split('T')[0];
-      if (!dailyData[date]) dailyData[date] = [];
-      dailyData[date].push(pressures[i]);
-    });
-
-    const labels = Object.keys(dailyData);
-    const averages = labels.map(date => {
-      const arr = dailyData[date];
-      return (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1);
-    });
-
-    // 前日比（矢印）
-    const changes = averages.map((val, i) => {
-      if (i === 0) return '';
-      const diff = val - averages[i - 1];
-      if (diff > 0) return '↑';
-      if (diff < 0) return '↓';
-      return '→';
-    });
-
-    const today = new Date().toISOString().split('T')[0];
-
-    // Chart.js
-    const ctx = document.getElementById('pressureChart').getContext('2d');
-    new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: '平均気圧 (hPa)',
-          data: averages,
-          borderColor: 'blue',
-          fill: false,
-          tension: 0.1
-        }]
+  // ▼ Chart.js グラフ設定
+  const ctx = document.getElementById('pressureChart').getContext('2d');
+  const todayIndex = labels.length - 1;
+  const pressureChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: '気圧 (hPa)',
+        data: data,
+        borderColor: 'blue',
+        fill: false,
+        tension: 0.1
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: true }
       },
-      options: {
-        responsive: false,
-        scales: {
-          x: {
-            ticks: {
-              callback: function(val, index) {
-                const date = labels[index];
-                return date === today ? '★' + date : date;
-              }
-            },
-            grid: {
-              color: ctx => {
-                const date = labels[ctx.index];
-                return date === today ? '#ccc' : '#eee';
-              }
-            }
+      scales: {
+        x: {
+          ticks: {
+            color: ctx => ctx.index === todayIndex ? 'black' : 'gray',
+            font: ctx => ctx.index === todayIndex ? { weight: 'bold' } : {}
           }
         }
       }
-    });
+    },
+    plugins: [{
+      id: 'highlightToday',
+      beforeDraw: (chart) => {
+        const chartArea = chart.chartArea;
+        const xAxis = chart.scales.x;
+        const index = todayIndex;
+        const left = xAxis.getPixelForValue(index - 0.5);
+        const right = xAxis.getPixelForValue(index + 0.5);
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.fillStyle = '#e0e0e0';
+        ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+        ctx.restore();
+      }
+    }]
+  });
 
-    // 表作成
-    let tableHTML = '<table border="1" style="border-collapse:collapse;margin-top:10px;">';
-    tableHTML += '<tr><th>日付</th><th>平均気圧</th><th>変化</th></tr>';
-    labels.forEach((date, i) => {
-      tableHTML += `<tr${date === today ? ' style="background-color:lightgray;"' : ''}>` +
-                   `<td><b>${date}</b></td>` +
-                   `<td>${averages[i]}</td>` +
-                   `<td>${changes[i]}</td>` +
-                   `</tr>`;
-    });
-    tableHTML += '</table>';
-    document.body.innerHTML += tableHTML;
+  // ▼ 表の生成
+  const tbody = document.getElementById('pressureTableBody');
+  for (let i = 0; i < labels.length; i++) {
+    const row = document.createElement('tr');
+    if (i === todayIndex) row.classList.add('today');
+
+    const dateCell = document.createElement('td');
+    dateCell.textContent = labels[i];
+    row.appendChild(dateCell);
+
+    const pressureCell = document.createElement('td');
+    pressureCell.textContent = data[i];
+    row.appendChild(pressureCell);
+
+    const changeCell = document.createElement('td');
+    if (i > 0) {
+      const diff = data[i] - data[i - 1];
+      if (diff > 0) {
+        changeCell.textContent = `↑ ${diff}`;
+        changeCell.classList.add('up');
+      } else if (diff < 0) {
+        changeCell.textContent = `↓ ${Math.abs(diff)}`;
+        changeCell.classList.add('down');
+      } else {
+        changeCell.textContent = '-';
+      }
+    } else {
+      changeCell.textContent = '-';
+    }
+    row.appendChild(changeCell);
+
+    tbody.appendChild(row);
+  }
+
+  // ▼ 切り替えボタン
+  document.getElementById('toggleView').addEventListener('click', () => {
+    const chartContainer = document.getElementById('chartContainer');
+    const tableContainer = document.getElementById('tableContainer');
+    const btn = document.getElementById('toggleView');
+
+    if (chartContainer.classList.contains('hidden')) {
+      chartContainer.classList.remove('hidden');
+      tableContainer.classList.add('hidden');
+      btn.textContent = '表に切り替え';
+    } else {
+      chartContainer.classList.add('hidden');
+      tableContainer.classList.remove('hidden');
+      btn.textContent = 'グラフに切り替え';
+    }
   });
 </script>
+
+</body>
+</html>

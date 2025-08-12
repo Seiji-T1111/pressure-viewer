@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
-<title>気圧と体調グラフ（東京・過去14日間）</title>
+<title>気圧・気温・体調グラフ（東京・過去14日間）</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   body { font-family: sans-serif; margin: 20px; background: #f8f9fa; }
@@ -13,25 +13,29 @@
     border-radius: 10px;
     box-shadow: 0 0 10px rgba(0,0,0,0.1);
     padding: 20px;
-    max-width: 900px;
+    max-width: 1000px;
     margin-bottom: 24px;
   }
-  #tableContainer { display: none; max-height: 400px; overflow-y: auto; }
+  #tableContainer { display: none; max-height: 500px; overflow-y: auto; }
   table {
     width: 100%; border-collapse: collapse; 
   }
   th, td {
     border: 1px solid #ddd; padding: 8px; text-align: center;
+    vertical-align: middle;
   }
   th { background: #f3f3f3; }
   tr.today { background: #fff7cc; font-weight: 700; }
   .up { color: #1b6e20; }
   .down { color: #c02828; }
   .nochange { color: #666; }
+  .weather-icon {
+    width: 24px; height: 24px; vertical-align: middle;
+  }
 </style>
 </head>
 <body>
-<h1>過去14日間の東京の気圧と体調スコア</h1>
+<h1>過去14日間の東京の気圧・気温・体調スコア</h1>
 <button id="toggleBtn">表に切り替え</button>
 <div id="chartContainer">
   <canvas id="pressureChart"></canvas>
@@ -39,7 +43,9 @@
 <div id="tableContainer">
   <table>
     <thead>
-      <tr><th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>体調スコア (1〜5)</th></tr>
+      <tr>
+        <th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>平均気温 (℃)</th><th>天候</th><th>体調スコア (1〜5)</th>
+      </tr>
     </thead>
     <tbody id="dataBody"></tbody>
   </table>
@@ -49,34 +55,55 @@
 (async function() {
   const lat = 35.6895;
   const lon = 139.6917;
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl&timezone=Asia/Tokyo&past_days=14`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl,temperature_2m,weathercode&timezone=Asia/Tokyo&past_days=14`;
 
   const res = await fetch(url);
   const data = await res.json();
+
+  // API hourly data
   const times = data.hourly.time;
   const pressures = data.hourly.pressure_msl;
+  const temps = data.hourly.temperature_2m;
+  const weatherCodes = data.hourly.weathercode;
 
-  // 今日の日付
   const today = new Date().toISOString().split('T')[0];
   const todayDate = new Date(today);
 
-  // 日別に気圧をグルーピングし平均を計算（未来データは除外）
+  // 日別データ格納用
   const daily = {};
   for(let i=0; i<times.length; i++){
     const dateStr = times[i].split('T')[0];
     const dateObj = new Date(dateStr);
-    if(dateObj > todayDate) continue; // 未来の日付はスキップ
-    if(!daily[dateStr]) daily[dateStr] = [];
-    daily[dateStr].push(pressures[i]);
+    if(dateObj > todayDate) continue; // 未来は除外
+    if(!daily[dateStr]) daily[dateStr] = { pressure: [], temp: [], weather: [] };
+    daily[dateStr].pressure.push(pressures[i]);
+    daily[dateStr].temp.push(temps[i]);
+    daily[dateStr].weather.push(weatherCodes[i]);
   }
+
+  // 日付ソート
   const dates = Object.keys(daily).sort();
-  const dailyAvg = dates.map(d => {
-    const vals = daily[d];
-    const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
-    return { date: d, avg: +(avg.toFixed(1)) };
+
+  // 日別平均気圧・気温計算 & 天候は最頻値を採用
+  function mode(arr) {
+    const freq = {};
+    arr.forEach(v => { freq[v] = (freq[v] || 0) + 1; });
+    return Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0];
+  }
+
+  const dailyData = dates.map(d => {
+    const pAvg = daily[d].pressure.reduce((a,b)=>a+b,0)/daily[d].pressure.length;
+    const tAvg = daily[d].temp.reduce((a,b)=>a+b,0)/daily[d].temp.length;
+    const wMode = mode(daily[d].weather);
+    return {
+      date: d,
+      pressure: +pAvg.toFixed(1),
+      temp: +tAvg.toFixed(1),
+      weatherCode: wMode
+    };
   });
 
-  // ここに体調スコアを手動で設定（任意。日付が合わない場合はnull）
+  // 体調スコア（例。実際は別途管理）
   const symptomData = {
     '2025-07-29': 1,
     '2025-07-30': 1,
@@ -95,13 +122,49 @@
     '2025-08-12': 2
   };
 
-  // 表表示用
+  // 天候コードを天気文字列＋簡単なアイコン(絵文字)に変換
+  function weatherToTextIcon(code) {
+    // https://open-meteo.com/en/docs#weathercode
+    const map = {
+      0:  ['晴れ', '☀️'],
+      1:  ['主に晴れ', '🌤️'],
+      2:  ['一部曇り', '⛅'],
+      3:  ['曇り', '☁️'],
+      45: ['霧', '🌫️'],
+      48: ['霧（氷晶）', '🌫️'],
+      51: ['霧雨（弱）', '🌦️'],
+      53: ['霧雨（中）', '🌧️'],
+      55: ['霧雨（強）', '🌧️'],
+      56: ['凍結霧雨（弱）', '🌧️❄️'],
+      57: ['凍結霧雨（強）', '🌧️❄️'],
+      61: ['小雨（弱）', '🌧️'],
+      63: ['小雨（中）', '🌧️'],
+      65: ['小雨（強）', '🌧️'],
+      66: ['凍結小雨（弱）', '🌧️❄️'],
+      67: ['凍結小雨（強）', '🌧️❄️'],
+      71: ['小雪（弱）', '🌨️'],
+      73: ['小雪（中）', '🌨️'],
+      75: ['小雪（強）', '🌨️'],
+      77: ['霰（あられ）', '🌨️'],
+      80: ['にわか雨（弱）', '🌧️⛈️'],
+      81: ['にわか雨（中）', '🌧️⛈️'],
+      82: ['にわか雨（強）', '🌧️⛈️'],
+      85: ['にわか雪（弱）', '🌨️❄️'],
+      86: ['にわか雪（強）', '🌨️❄️'],
+      95: ['雷雨', '⛈️'],
+      96: ['雷雨（小粒の雹を伴う）', '⛈️❄️'],
+      99: ['雷雨（大粒の雹を伴う）', '⛈️❄️']
+    };
+    return map[code] || ['不明', '❓'];
+  }
+
+  // 表表示
   const tbody = document.getElementById('dataBody');
-  dailyAvg.forEach((item, i) => {
+  dailyData.forEach((item, i) => {
     const tr = document.createElement('tr');
     if(item.date === today) tr.classList.add('today');
 
-    const change = i === 0 ? null : +(dailyAvg[i].avg - dailyAvg[i-1].avg).toFixed(1);
+    const change = i === 0 ? null : +(dailyData[i].pressure - dailyData[i-1].pressure).toFixed(1);
     const changeTd = document.createElement('td');
     if(i === 0){
       changeTd.textContent = '—';
@@ -117,9 +180,14 @@
       changeTd.classList.add('nochange');
     }
 
-    tr.innerHTML = `<td>${item.date}</td><td>${item.avg}</td>`;
-    tr.appendChild(changeTd);
+    const [weatherText, weatherIcon] = weatherToTextIcon(item.weatherCode);
 
+    tr.innerHTML = `<td>${item.date}</td>
+                    <td>${item.pressure}</td>`;
+    tr.appendChild(changeTd);
+    tr.innerHTML += `<td>${item.temp}</td>
+                     <td title="${weatherText}">${weatherIcon}</td>
+                    `;
     const symptomTd = document.createElement('td');
     symptomTd.textContent = symptomData[item.date] ?? '-';
     tr.appendChild(symptomTd);
@@ -136,10 +204,21 @@
       datasets: [
         {
           label: '気圧 (hPa)',
-          data: dailyAvg.map(d => d.avg),
+          data: dailyData.map(d => d.pressure),
           yAxisID: 'yRight',
           borderColor: 'rgba(54, 162, 235, 1)',
           backgroundColor: 'rgba(54, 162, 235, 0.15)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 4,
+          order: 3
+        },
+        {
+          label: '平均気温 (℃)',
+          data: dailyData.map(d => d.temp),
+          yAxisID: 'yRight',
+          borderColor: 'rgba(255, 159, 64, 1)',
+          backgroundColor: 'rgba(255, 159, 64, 0.15)',
           fill: true,
           tension: 0.3,
           pointRadius: 4,
@@ -174,10 +253,10 @@
         yRight: {
           type: 'linear',
           position: 'right',
-          min: Math.min(...dailyAvg.map(d => d.avg)) - 5,
-          max: Math.max(...dailyAvg.map(d => d.avg)) + 5,
+          min: Math.min(...dailyData.map(d => Math.min(d.pressure, d.temp))) - 5,
+          max: Math.max(...dailyData.map(d => Math.max(d.pressure, d.temp))) + 5,
           grid: { drawOnChartArea: false },
-          title: { display: true, text: '気圧 (hPa)' }
+          title: { display: true, text: '気圧・気温' }
         },
         x: {
           title: { display: true, text: '日付' }

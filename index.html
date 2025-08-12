@@ -1,12 +1,27 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>過去14日間の天気</title>
+<title>過去14日間の天気（東京）</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; }
+  table { border-collapse: collapse; width: 100%; max-width: 500px; }
+  th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
+  th { background: #f2f2f2; }
+</style>
 </head>
 <body>
-<h1>過去14日間の天気</h1>
-<pre id="data"></pre>
+<h1>過去14日間の天気（東京）</h1>
+<table id="weather-table">
+  <thead>
+    <tr>
+      <th>日付</th>
+      <th>最高気温 (°C)</th>
+      <th>最低気温 (°C)</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
 
 <script>
 const latitude = 35.6895; // 東京
@@ -15,9 +30,18 @@ const longitude = 139.6917;
 fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&past_days=14&daily=temperature_2m_max,temperature_2m_min&timezone=Asia/Tokyo`)
   .then(response => response.json())
   .then(data => {
-    document.getElementById("data").textContent = JSON.stringify(data, null, 2);
+    const dates = data.daily.time;
+    const maxTemps = data.daily.temperature_2m_max;
+    const minTemps = data.daily.temperature_2m_min;
+
+    const tbody = document.querySelector("#weather-table tbody");
+    dates.forEach((date, i) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${date}</td><td>${maxTemps[i]}</td><td>${minTemps[i]}</td>`;
+      tbody.appendChild(row);
+    });
   })
-  .catch(error => console.error(error));
+  .catch(error => console.error("データ取得エラー:", error));
 </script>
 </body>
 </html>

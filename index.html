@@ -1,59 +1,65 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>過去14日間の東京の気圧</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-  body { font-family: sans-serif; margin: 20px; background: #f8f9fa; }
-  h1 { font-size: 1.4em; }
-  #chartContainer { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-</style>
+  <meta charset="UTF-8">
+  <title>過去14日間の気圧グラフ</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-<h1>過去14日間の東京の気圧</h1>
-<div id="chartContainer">
-  <canvas id="pressureChart"></canvas>
-</div>
-<script>
-(async function() {
-  const lat = 35.6895;
-  const lon = 139.6917;
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl&timezone=Asia/Tokyo&past_days=14`;
+  <h2>過去14日間の気圧変化（東京）</h2>
+  <canvas id="pressureChart" width="800" height="400"></canvas>
 
-  const res = await fetch(url);
-  const data = await res.json();
-  const times = data.hourly.time;
-  const pressures = data.hourly.pressure_msl;
+  <script>
+    // 東京の緯度経度
+    const latitude = 35.6895;
+    const longitude = 139.6917;
 
-  new Chart(document.getElementById('pressureChart'), {
-    type: 'line',
-    data: {
-      labels: times.map(t => t.replace('T', ' ')),
-      datasets: [{
-        label: '気圧 (hPa)',
-        data: pressures,
-        borderColor: 'rgba(54, 162, 235, 1)',
-        backgroundColor: 'rgba(54, 162, 235, 0.2)',
-        fill: true,
-        tension: 0.2
-      }]
-    },
-    options: {
-      scales: {
-        x: {
-          ticks: {
-            maxRotation: 0
+    // 今日と14日前の日付を計算
+    const today = new Date();
+    const endDate = today.toISOString().split('T')[0];
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - 13); // 今日含めて14日間
+    const startDateStr = startDate.toISOString().split('T')[0];
+
+    // API URL
+    const apiUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude}&longitude=${longitude}&start_date=${startDateStr}&end_date=${endDate}&hourly=pressure_msl&timezone=Asia%2FTokyo`;
+
+    fetch(apiUrl)
+      .then(response => response.json())
+      .then(data => {
+        const times = data.hourly.time;
+        const pressures = data.hourly.pressure_msl;
+
+        const ctx = document.getElementById('pressureChart').getContext('2d');
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: times,
+            datasets: [{
+              label: '気圧 (hPa)',
+              data: pressures,
+              borderColor: 'blue',
+              backgroundColor: 'rgba(0,0,255,0.1)',
+              fill: true,
+              tension: 0.2
+            }]
+          },
+          options: {
+            scales: {
+              x: {
+                ticks: { maxTicksLimit: 14 },
+                title: { display: true, text: '日付' }
+              },
+              y: {
+                title: { display: true, text: 'hPa' }
+              }
+            }
           }
-        },
-        y: {
-          suggestedMin: 980,
-          suggestedMax: 1030
-        }
-      }
-    }
-  });
-})();
-</script>
+        });
+      })
+      .catch(err => {
+        console.error('データ取得エラー:', err);
+      });
+  </script>
 </body>
 </html>

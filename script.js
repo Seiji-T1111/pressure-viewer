@@ -30,8 +30,25 @@
   const endDateStr = today.toISOString().split('T')[0];
   const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&start_date=${startDateStr}&end_date=${endDateStr}&hourly=pressure_msl&daily=weathercode&timezone=Asia%2FTokyo`;
 
-  const res = await fetch(apiUrl);
-  const json = await res.json();
+  let json;
+  try {
+    const res = await fetch(apiUrl);
+    if(!res.ok) {
+      alert(`API取得失敗: ${res.status} ${res.statusText}`);
+      return;
+    }
+    json = await res.json();
+  } catch(e){
+    alert("API取得時にエラーが発生しました。");
+    console.error(e);
+    return;
+  }
+
+  if(!json.hourly || !json.hourly.time){
+    alert("APIレスポンスにhourlyデータがありません。");
+    console.log(json);
+    return;
+  }
 
   // --- 日毎平均気圧算出 ---
   const times = json.hourly.time;

@@ -9,6 +9,7 @@
   h1 { font-size: 1.4em; margin-bottom: 12px; }
   #monthSelect { font-size: 1em; padding: 6px; margin-bottom: 16px; }
 
+  /* タブスタイル */
   .tabs {
     display: flex;
     gap: 8px;
@@ -59,12 +60,6 @@
     font-size: 1em;
     padding: 2px 6px;
   }
-  input.memoInput {
-    width: 100%;
-    box-sizing: border-box;
-    font-size: 0.9em;
-    padding: 2px 6px;
-  }
 </style>
 </head>
 <body>
@@ -86,7 +81,7 @@
   <table>
     <thead>
       <tr>
-        <th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>体調スコア</th><th>メモ</th><th>天気</th>
+        <th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>体調スコア</th><th>天気</th>
       </tr>
     </thead>
     <tbody id="dataBody"></tbody>
@@ -152,7 +147,7 @@
 
   // 体調スコア設定
   const scoreText = {1:'悪い',2:'やや悪い',3:'ふつう',4:'やや良い',5:'良い'};
-  const storageKey = 'userSymptomDataWithMemo';
+  const storageKey = 'userSymptomData';
   let symptomData = {};
   try {
     const stored = localStorage.getItem(storageKey);
@@ -182,6 +177,7 @@
   }
 
   // 天気コードから背景色決定
+  // Open-Meteo天気コード参考：https://open-meteo.com/en/docs#weathervariables
   function weatherCodeToColor(code){
     if(code === null) return 'transparent';
     if([0].includes(code)) return '#fff9c4';  // 晴れ：薄い黄色
@@ -231,31 +227,14 @@
         opt.textContent = `${v} (${scoreText[v]})`;
         select.appendChild(opt);
       });
-      select.value = symptomData[d.date]?.score ?? 3;
+      select.value = symptomData[d.date] ?? 3;
       select.addEventListener('change', e => {
-        if(!symptomData[d.date]) symptomData[d.date] = {};
-        symptomData[d.date].score = Number(e.target.value);
+        symptomData[d.date] = Number(e.target.value);
         saveSymptomData();
         updateChart();
       });
       symptomTd.appendChild(select);
       tr.appendChild(symptomTd);
-
-      // メモ欄
-      const memoTd = document.createElement('td');
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.classList.add('memoInput');
-      input.maxLength = 100;
-      input.placeholder = 'メモ（100字以内）';
-      input.value = symptomData[d.date]?.memo ?? '';
-      input.addEventListener('input', e => {
-        if(!symptomData[d.date]) symptomData[d.date] = {};
-        symptomData[d.date].memo = e.target.value;
-        saveSymptomData();
-      });
-      memoTd.appendChild(input);
-      tr.appendChild(memoTd);
 
       // 天気表示（テキスト＋背景色）
       const weatherTd = document.createElement('td');
@@ -277,7 +256,9 @@
 
       const labels = chart.data.labels;
       const dailyData = [];
+      // ラベルから日付部分抽出
       labels.forEach(label => {
+        // 例: 2025-08-12(月)
         const match = label.match(/^(\d{4}-\d{2}-\d{2})/);
         if(match) dailyData.push(match[1]);
         else dailyData.push(null);
@@ -311,7 +292,7 @@
 
     const labels = monthData.map(d => `${d.date}(${getWeekday(d.date)})`);
     const pressureData = monthData.map(d => d.avg);
-    const symptomVals = monthData.map(d => symptomData[d.date]?.score ?? 3);
+    const symptomVals = monthData.map(d => symptomData[d.date] ?? 3);
 
     if(chart) chart.destroy();
     chart = new Chart(ctx, {

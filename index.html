@@ -29,10 +29,9 @@
   .up { color: #1b6e20; }
   .down { color: #c02828; }
   .nochange { color: #666; }
-  input[type=number] {
-    width: 40px;
+  select {
     font-size: 1em;
-    text-align: center;
+    padding: 2px 6px;
   }
 </style>
 </head>
@@ -46,7 +45,7 @@
   <table>
     <thead>
       <tr>
-        <th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>体調スコア (1〜5)<br><small>入力可能</small></th>
+        <th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>体調スコア</th>
       </tr>
     </thead>
     <tbody id="dataBody"></tbody>
@@ -67,18 +66,39 @@
 
   const today = new Date().toISOString().split('T')[0];
 
+  // 曜日取得関数
+  function getWeekday(dateStr) {
+    const days = ['日', '月', '火', '水', '木', '金', '土'];
+    const d = new Date(dateStr);
+    return days[d.getDay()];
+  }
+
   // 日別に平均気圧を計算
   const daily = {};
   for(let i=0; i<times.length; i++){
     const dateStr = times[i].split('T')[0];
+    if(dateStr > today) continue; // 未来の日付はスキップ
     if(!daily[dateStr]) daily[dateStr] = [];
     daily[dateStr].push(pressures[i]);
   }
-  const dates = Object.keys(daily).sort();
+  let dates = Object.keys(daily).sort();
+
+  // もし今日がまだデータに無ければ追加（安全策）
+  if(!dates.includes(today)) dates.push(today);
+
   const dailyData = dates.map(d => {
     const avg = daily[d].reduce((a,b)=>a+b,0)/daily[d].length;
     return { date: d, pressure: +avg.toFixed(1) };
   });
+
+  // 体調スコアの文字対応表
+  const scoreText = {
+    1: '悪い',
+    2: 'やや悪い',
+    3: 'ふつう',
+    4: 'やや良い',
+    5: '良い'
+  };
 
   // localStorageから体調スコアを取得
   const storageKey = 'userSymptomData';
@@ -117,30 +137,35 @@
         changeTd.classList.add('nochange');
       }
 
-      tr.innerHTML = `<td>${item.date}</td>
+      // 日付＋曜日
+      const dateWithWeek = `${item.date}（${getWeekday(item.date)}）`;
+
+      tr.innerHTML = `<td>${dateWithWeek}</td>
                       <td>${item.pressure}</td>`;
       tr.appendChild(changeTd);
 
-      // 体調入力欄
+      // 体調入力欄（プルダウン）
       const symptomTd = document.createElement('td');
-      const input = document.createElement('input');
-      input.type = 'number';
-      input.min = 1;
-      input.max = 5;
-      input.value = symptomData[item.date] ?? '';
-      input.title = '1〜5の数値を入力してください';
-      input.addEventListener('change', e => {
-        const val = Number(e.target.value);
-        if(val >= 1 && val <= 5){
-          symptomData[item.date] = val;
-          saveSymptomData();
-          updateChartData();
-        } else {
-          alert('1〜5の数値を入力してください');
-          e.target.value = symptomData[item.date] ?? '';
-        }
+      const select = document.createElement('select');
+      select.title = '体調スコアを選択してください';
+      [1,2,3,4,5].forEach(val => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = `${val} (${scoreText[val]})`;
+        select.appendChild(opt);
       });
-      symptomTd.appendChild(input);
+
+      // 初期値は保存データ or 3（ふつう）
+      select.value = symptomData[item.date] ?? 3;
+
+      select.addEventListener('change', e => {
+        const val = Number(e.target.value);
+        symptomData[item.date] = val;
+        saveSymptomData();
+        updateChartData();
+      });
+
+      symptomTd.appendChild(select);
       tr.appendChild(symptomTd);
 
       tbody.appendChild(tr);
@@ -150,7 +175,7 @@
   // グラフ更新関数
   let chart;
   function updateChartData(){
-    const symptomVals = dates.map(d => symptomData[d] ?? null);
+    const symptomVals = dates.map(d => symptomData[d] ?? 3);
     chart.data.datasets[1].data = symptomVals;
     chart.update();
   }
@@ -160,7 +185,7 @@
   chart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: dates,
+      labels: dates.map(d => `${d}(${getWeekday(d)})`),
       datasets: [
         {
           label: '気圧 (hPa)',
@@ -174,8 +199,8 @@
           order: 2
         },
         {
-          label: '体調スコア (1〜5)',
-          data: dates.map(d => symptomData[d] ?? null),
+          label: '体調スコア',
+          data: dates.map(d => symptomData[d] ?? 3),
           yAxisID: 'yLeft',
           borderColor: 'rgba(255, 99, 132, 1)',
           backgroundColor: 'rgba(255, 99, 132, 0.15)',
@@ -194,9 +219,9 @@
         yLeft: {
           type: 'linear',
           position: 'left',
-          min: 0,
+          min: 1,
           max: 5,
-          ticks: { stepSize: 1 },
+          ticks: { stepSize: 1, callback: v => scoreText[v] || v },
           title: { display: true, text: '体調スコア' }
         },
         yRight: {
@@ -218,7 +243,14 @@
           mode: 'nearest',
           intersect: false,
           callbacks: {
-            label: ctx => ctx.dataset.label + ': ' + ctx.formattedValue
+            label: ctx => {
+              if(ctx.dataset.label === '体調スコア'){
+                const val = ctx.parsed.y;
+                return ctx.dataset.label + ': ' + (scoreText[val] || val);
+              } else {
+                return ctx.dataset.label + ': ' + ctx.formattedValue;
+              }
+            }
           }
         }
       }

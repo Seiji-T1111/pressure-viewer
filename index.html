@@ -2,20 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
-<title>月別気圧と体調スコア入力（東京）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>過去30日間の東京の気圧と体調管理</title>
 <link rel="stylesheet" href="style.css" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-<h1>月別気圧と体調スコア入力（東京）</h1>
+<h1>過去30日間の東京の気圧と体調管理</h1>
 
-<label for="monthSelect">表示する月を選択：</label>
-<select id="monthSelect"></select>
-
-<div class="tabs">
-  <div id="tabChart" class="tab active">グラフ</div>
-  <div id="tabTable" class="tab">表</div>
-</div>
+<button id="btnGraph">グラフ表示</button>
+<button id="btnTable">表表示</button>
 
 <div id="chartContainer">
   <canvas id="pressureChart"></canvas>
@@ -25,7 +21,11 @@
   <table>
     <thead>
       <tr>
-        <th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>体調スコア</th><th>メモ</th><th>天気</th>
+        <th>日付</th>
+        <th>平均気圧 (hPa)</th>
+        <th>体調スコア</th>
+        <th>メモ</th>
+        <th>天気コード</th>
       </tr>
     </thead>
     <tbody id="dataBody"></tbody>

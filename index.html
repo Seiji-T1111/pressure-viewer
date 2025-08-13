@@ -1,37 +1,39 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>過去30日間の東京の気圧と体調管理</title>
-<link rel="stylesheet" href="style.css" />
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta charset="UTF-8">
+    <title>天気と気圧データ</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-<h1>過去30日間の東京の気圧と体調管理</h1>
+    <h1>天気と気圧データ</h1>
 
-<button id="btnGraph">グラフ表示</button>
-<button id="btnTable">表表示</button>
+    <!-- 切り替えボタン -->
+    <div class="tab-buttons">
+        <button id="showGraph" class="active">グラフ</button>
+        <button id="showTable">表</button>
+    </div>
 
-<div id="chartContainer">
-  <canvas id="pressureChart"></canvas>
-</div>
+    <!-- グラフ表示 -->
+    <div id="graphSection">
+        <canvas id="pressureChart"></canvas>
+    </div>
 
-<div id="tableContainer" style="display:none;">
-  <table>
-    <thead>
-      <tr>
-        <th>日付</th>
-        <th>平均気圧 (hPa)</th>
-        <th>体調スコア</th>
-        <th>メモ</th>
-        <th>天気コード</th>
-      </tr>
-    </thead>
-    <tbody id="dataBody"></tbody>
-  </table>
-</div>
+    <!-- 表表示 -->
+    <div id="tableSection" style="display: none;">
+        <table id="weatherTable">
+            <thead>
+                <tr>
+                    <th>日時</th>
+                    <th>気圧 (hPa)</th>
+                    <th>天気コード</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
 
-<script src="script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

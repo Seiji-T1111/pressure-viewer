@@ -1,227 +1,152 @@
-(async function(){
-  const lat = 35.6895;
-  const lon = 139.6917;
+// script.js
+document.addEventListener("DOMContentLoaded", () => {
+    const pressureCanvas = document.getElementById("pressureChart");
+    const healthCanvas = document.getElementById("healthChart");
 
-  const today = new Date();
-  const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - 30);
+    const pressureBtn = document.getElementById("showPressure");
+    const healthBtn = document.getElementById("showHealth");
 
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = today.toISOString().split('T')[0];
+    let pressureChart, healthChart;
 
-  const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&start_date=${startDateStr}&end_date=${endDateStr}&hourly=pressure_msl&daily=weathercode&timezone=Asia%2FTokyo`;
+    const lat = 35.6895; // 東京
+    const lon = 139.6917;
 
-  let json;
-  try {
-    const res = await fetch(apiUrl);
-    if(!res.ok) {
-      alert(`API取得失敗: ${res.status} ${res.statusText}`);
-      return;
-    }
-    json = await res.json();
-  } catch(e){
-    alert("API取得時にエラーが発生しました。");
-    console.error(e);
-    return;
-  }
-
-  if(!json.hourly || !json.hourly.time){
-    alert("APIレスポンスにhourlyデータがありません。");
-    console.log(json);
-    return;
-  }
-
-  const times = json.hourly.time;
-  const pressures = json.hourly.pressure_msl;
-  const dailyDates = json.daily.time;
-  const dailyWeatherCodes = json.daily.weathercode;
-
-  const dailyMap = {};
-  for(let i=0; i<times.length; i++){
-    const d = times[i].split('T')[0];
-    if(!dailyMap[d]) dailyMap[d] = [];
-    dailyMap[d].push(pressures[i]);
-  }
-
-  const dailyData = Object.entries(dailyMap).map(([date, vals])=>{
-    const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
-    const widx = dailyDates.indexOf(date);
-    const weathercode = widx >= 0 ? dailyWeatherCodes[widx] : null;
-    return {date, avg: +avg.toFixed(1), weathercode};
-  }).sort((a,b)=>a.date.localeCompare(b.date));
-
-  const scoreText = {1:'悪い',2:'やや悪い',3:'ふつう',4:'やや良い',5:'良い'};
-  const storageKey = 'symptomData';
-  let symptomData = {};
-  try {
-    const stored = localStorage.getItem(storageKey);
-    if(stored) symptomData = JSON.parse(stored);
-  } catch(e){console.warn('localStorage読み込み失敗', e);}
-
-  function saveSymptomData(){
-    localStorage.setItem(storageKey, JSON.stringify(symptomData));
-  }
-
-  function getWeekday(dateStr){
-    const days = ['日','月','火','水','木','金','土'];
-    return days[new Date(dateStr).getDay()];
-  }
-
-  function weatherCodeToColor(code){
-    if(code === null) return 'transparent';
-    if([0].includes(code)) return '#fff9c4';
-    if([1,2,3].includes(code)) return '#cfd8dc';
-    if([45,48].includes(code)) return '#b0bec5';
-    if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(code)) return '#90caf9';
-    if([71,73,75,77,85,86].includes(code)) return '#81d4fa';
-    return 'transparent';
-  }
-
-  const tbody = document.getElementById('dataBody');
-  function renderTable(){
-    tbody.innerHTML = '';
-    const todayStr = new Date().toISOString().split('T')[0];
-    dailyData.forEach(d => {
-      const tr = document.createElement('tr');
-      if(d.date === todayStr) tr.classList.add('today');
-
-      const dateTd = document.createElement('td');
-      dateTd.textContent = `${d.date}（${getWeekday(d.date)}）`;
-
-      const avgTd = document.createElement('td');
-      avgTd.textContent = d.avg;
-
-      const symptomTd = document.createElement('td');
-      const select = document.createElement('select');
-      select.classList.add('bodySelect');
-      [1,2,3,4,5].forEach(v=>{
-        const opt = document.createElement('option');
-        opt.value = v;
-        opt.textContent = `${scoreText[v]} (${v})`;
-        select.appendChild(opt);
-      });
-      select.value = symptomData[d.date]?.score ?? 3;
-      select.addEventListener('change', e => {
-        if(!symptomData[d.date]) symptomData[d.date] = {};
-        symptomData[d.date].score = Number(e.target.value);
-        saveSymptomData();
-        renderChart();  // 体調色反映のためチャート再描画
-      });
-      symptomTd.appendChild(select);
-
-      const memoTd = document.createElement('td');
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.classList.add('memoInput');
-      input.maxLength = 100;
-      input.placeholder = 'メモ（100字以内）';
-      input.value = symptomData[d.date]?.memo ?? '';
-      input.addEventListener('input', e => {
-        if(!symptomData[d.date]) symptomData[d.date] = {};
-        symptomData[d.date].memo = e.target.value;
-        saveSymptomData();
-      });
-      memoTd.appendChild(input);
-
-      const weatherTd = document.createElement('td');
-      weatherTd.style.backgroundColor = weatherCodeToColor(d.weathercode);
-      weatherTd.textContent = d.weathercode !== null ? d.weathercode : '-';
-
-      tr.appendChild(dateTd);
-      tr.appendChild(avgTd);
-      tr.appendChild(symptomTd);
-      tr.appendChild(memoTd);
-      tr.appendChild(weatherTd);
-
-      tbody.appendChild(tr);
-    });
-  }
-
-  const ctx = document.getElementById('pressureChart').getContext('2d');
-  let chart = null;
-
-  function renderChart(){
-    const labels = dailyData.map(d => d.date.split('-')[2] + '日');
-    const dataPoints = dailyData.map(d => d.avg);
-    const bgColors = dailyData.map(d => weatherCodeToColor(d.weathercode));
-
-    const symptomColors = dailyData.map(d => {
-      const score = symptomData[d.date]?.score ?? 3;
-      switch(score){
-        case 1: return '#d32f2f';
-        case 2: return '#f57c00';
-        case 3: return '#666';
-        case 4: return '#388e3c';
-        case 5: return '#1976d2';
-        default: return '#666';
-      }
-    });
-
-    const weatherBgPlugin = {
-      id: 'weatherBgPlugin',
-      beforeDraw(chart) {
-        const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
-        const count = labels.length;
-        const bandWidth = (right - left) / count;
-        ctx.save();
-        for(let i = 0; i < count; i++){
-          ctx.fillStyle = bgColors[i] || 'transparent';
-          ctx.fillRect(left + bandWidth*i, top, bandWidth, bottom - top);
-        }
-        ctx.restore();
-      }
+    // 天気ごとの背景色設定
+    const weatherColors = {
+        clear: "rgba(255, 255, 150, 0.2)", // 晴れ
+        clouds: "rgba(200, 200, 200, 0.2)", // 曇り
+        rain: "rgba(150, 150, 255, 0.2)",   // 雨
+        default: "rgba(255, 255, 255, 0.0)" // デフォルト
     };
 
-    if(chart) chart.destroy();
-    chart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          label: '平均気圧 (hPa)',
-          data: dataPoints,
-          borderColor: '#36a2eb',
-          backgroundColor: 'rgba(54, 162, 235, 0.2)',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 5,
-          pointBackgroundColor: symptomColors
-        }]
-      },
-      options: {
-        scales: {
-          y: {
-            suggestedMin: Math.min(...dataPoints) - 5,
-            suggestedMax: Math.max(...dataPoints) + 5,
-            title: { display: true, text: '気圧 (hPa)' }
-          }
-        },
-        plugins: {
-          legend: { display: true }
+    // ダミー体調データ（テスト用）
+    const healthData = [
+        3, 4, 5, 6, 4, 3, 2, 5, 6, 4,
+        5, 4, 3, 2, 5, 6, 4, 3, 2, 5,
+        6, 4, 5, 4, 3, 2, 5, 6, 4, 3
+    ];
+
+    async function fetchData() {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl,weathercode&timezone=Asia/Tokyo`;
+        const res = await fetch(url);
+        if (!res.ok) {
+            throw new Error(`API取得エラー: ${res.status}`);
         }
-      },
-      plugins: [weatherBgPlugin]
+        return res.json();
+    }
+
+    function getWeatherType(code) {
+        if ([0].includes(code)) return "clear";     // 晴れ
+        if ([1, 2, 3].includes(code)) return "clouds"; // 曇り
+        if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return "rain"; // 雨
+        return "default";
+    }
+
+    function createPressureChart(labels, pressures, weatherCodes) {
+        if (pressureChart) pressureChart.destroy();
+
+        const bgColors = labels.map((_, i) => {
+            const type = getWeatherType(weatherCodes[i]);
+            return weatherColors[type] || weatherColors.default;
+        });
+
+        pressureChart = new Chart(pressureCanvas, {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: "気圧 (hPa)",
+                    data: pressures,
+                    borderColor: "blue",
+                    fill: false,
+                    tension: 0.1,
+                    yAxisID: "y"
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    backgroundZones: { colors: bgColors }
+                }
+            },
+            plugins: [{
+                id: "backgroundZones",
+                beforeDraw(chart, args, options) {
+                    const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
+                    const colors = options.colors || [];
+                    ctx.save();
+                    colors.forEach((color, i) => {
+                        const start = x.getPixelForValue(i);
+                        const end = x.getPixelForValue(i + 1);
+                        ctx.fillStyle = color;
+                        ctx.fillRect(start, top, end - start, bottom - top);
+                    });
+                    ctx.restore();
+                }
+            }]
+        });
+    }
+
+    function createHealthChart(labels, healthScores) {
+        if (healthChart) healthChart.destroy();
+
+        healthChart = new Chart(healthCanvas, {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: "体調スコア",
+                    data: healthScores,
+                    borderColor: "green",
+                    backgroundColor: "rgba(0, 255, 0, 0.2)",
+                    fill: true,
+                    tension: 0.3,
+                    yAxisID: "y"
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        suggestedMax: 10
+                    }
+                }
+            }
+        });
+    }
+
+    // 初期表示
+    fetchData()
+        .then(data => {
+            const labels = data.hourly.time.map(t => t.slice(5, 16)); // "MM-DD HH:00"
+            const pressures = data.hourly.pressure_msl;
+            const weatherCodes = data.hourly.weathercode;
+
+            createPressureChart(labels, pressures, weatherCodes);
+            createHealthChart(labels.slice(0, healthData.length), healthData);
+        })
+        .catch(err => {
+            console.error("データ取得エラー", err);
+        });
+
+    // ボタン切り替え
+    pressureBtn.addEventListener("click", () => {
+        pressureCanvas.style.display = "block";
+        healthCanvas.style.display = "none";
     });
-  }
 
-  const btnGraph = document.getElementById('btnGraph');
-  const btnTable = document.getElementById('btnTable');
-  const chartContainer = document.getElementById('chartContainer');
-  const tableContainer = document.getElementById('tableContainer');
-
-  btnGraph.addEventListener('click', ()=>{
-    chartContainer.style.display = 'block';
-    tableContainer.style.display = 'none';
-  });
-  btnTable.addEventListener('click', ()=>{
-    chartContainer.style.display = 'none';
-    tableContainer.style.display = 'block';
-  });
-
-  renderChart();
-  renderTable();
-
-  chartContainer.style.display = 'block';
-  tableContainer.style.display = 'none';
-
-})();
+    healthBtn.addEventListener("click", () => {
+        pressureCanvas.style.display = "none";
+        healthCanvas.style.display = "block";
+    });
+});

@@ -17,9 +17,7 @@
     margin-bottom: 24px;
   }
   #tableContainer { display: none; max-height: 500px; overflow-y: auto; }
-  table {
-    width: 100%; border-collapse: collapse; 
-  }
+  table { width: 100%; border-collapse: collapse; }
   th, td {
     border: 1px solid #ddd; padding: 8px; text-align: center;
     vertical-align: middle;
@@ -29,24 +27,24 @@
   .up { color: #1b6e20; }
   .down { color: #c02828; }
   .nochange { color: #666; }
-  input[type=number] {
-    width: 40px;
-    font-size: 1em;
-    text-align: center;
+  select.score {
+    padding: 4px 6px; border-radius: 6px; border: 1px solid #ccc; background: #fff;
   }
 </style>
 </head>
 <body>
 <h1>過去14日間の東京の気圧・体調スコア入力（天候背景付き）</h1>
 <button id="toggleBtn">表に切り替え</button>
+
 <div id="chartContainer">
   <canvas id="pressureChart"></canvas>
 </div>
+
 <div id="tableContainer">
   <table>
     <thead>
       <tr>
-        <th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>天候</th><th>体調スコア (1〜5)<br><small>入力可能</small></th>
+        <th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>天候</th><th>体調（プルダウン）</th>
       </tr>
     </thead>
     <tbody id="dataBody"></tbody>
@@ -55,6 +53,19 @@
 
 <script>
 (async function() {
+  // ============== 体調テキスト ↔ 数値マッピング ==============
+  const SCORE_LABELS = ["とても悪い","悪い","ふつう","良い","とても良い"];
+  const labelToScore = (label) => {
+    const idx = SCORE_LABELS.indexOf(label);
+    return idx >= 0 ? idx + 1 : NaN; // 1〜5
+  };
+  const scoreToLabel = (score) => {
+    const n = Number(score);
+    if (n >= 1 && n <= 5) return SCORE_LABELS[n - 1];
+    return "ふつう";
+  };
+
+  // ============== データ取得 ==============
   const lat = 35.6895;
   const lon = 139.6917;
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl,weathercode&timezone=Asia/Tokyo&past_days=14`;
@@ -62,54 +73,58 @@
   const res = await fetch(url);
   const data = await res.json();
 
-  const times = data.hourly.time;
-  const pressures = data.hourly.pressure_msl;
-  const weatherCodes = data.hourly.weathercode;
+  const times = data?.hourly?.time ?? [];
+  const pressures = data?.hourly?.pressure_msl ?? [];
+  const weatherCodes = data?.hourly?.weathercode ?? [];
 
   const today = new Date().toISOString().split('T')[0];
   const todayDate = new Date(today);
 
-  // 日別データ集計
+  // 日別集計
   const daily = {};
-  for(let i=0; i<times.length; i++){
+  for (let i = 0; i < times.length; i++) {
     const dateStr = times[i].split('T')[0];
     const dateObj = new Date(dateStr);
-    if(dateObj > todayDate) continue;
-    if(!daily[dateStr]) daily[dateStr] = { pressure: [], weather: [] };
+    if (dateObj > todayDate) continue; // 未来は除外
+    if (!daily[dateStr]) daily[dateStr] = { pressure: [], weather: [] };
     daily[dateStr].pressure.push(pressures[i]);
     daily[dateStr].weather.push(weatherCodes[i]);
   }
 
   const dates = Object.keys(daily).sort();
 
-  function mode(arr) {
+  const mode = (arr) => {
     const freq = {};
     arr.forEach(v => { freq[v] = (freq[v] || 0) + 1; });
-    return Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0];
-  }
+    return Number(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);
+  };
 
   const dailyData = dates.map(d => {
     const pAvg = daily[d].pressure.reduce((a,b)=>a+b,0)/daily[d].pressure.length;
     const wMode = mode(daily[d].weather);
-    return {
-      date: d,
-      pressure: +pAvg.toFixed(1),
-      weatherCode: wMode
-    };
+    return { date: d, pressure: +pAvg.toFixed(1), weatherCode: wMode };
   });
 
-  // localStorageから体調データを取得、無ければ空オブジェクト
+  // ============== localStorage 読み書き ==============
   const storageKey = 'userSymptomData';
   let symptomData = {};
   try {
     const stored = localStorage.getItem(storageKey);
-    if(stored) symptomData = JSON.parse(stored);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // 旧: 数値保存 → 新: テキスト保存 に自動移行
+      Object.keys(parsed).forEach(k => {
+        const v = parsed[k];
+        symptomData[k] = (typeof v === 'number') ? scoreToLabel(v) : v;
+      });
+    }
   } catch(e) { console.warn('localStorage read error', e); }
 
-  function saveSymptomData(){
+  const saveSymptomData = () => {
     localStorage.setItem(storageKey, JSON.stringify(symptomData));
-  }
+  };
 
+  // 天気表示（絵文字・背景色）
   function weatherToTextIcon(code) {
     const map = {
       0:  ['晴れ', '☀️', '#FFEE93'],
@@ -138,14 +153,15 @@
       85: ['にわか雪（弱）', '🌨️❄️', '#8298CF'],
       86: ['にわか雪（強）', '🌨️❄️', '#6B85B9'],
       95: ['雷雨', '⛈️', '#365F94'],
-      96: ['雷雨（小粒の雹を伴う）', '⛈️❄️', '#2E4E77'],
-      99: ['雷雨（大粒の雹を伴う）', '⛈️❄️', '#24425B']
+      96: ['雷雨（小粒の雹）', '⛈️❄️', '#2E4E77'],
+      99: ['雷雨（大粒の雹）', '⛈️❄️', '#24425B']
     };
     return map[code] || ['不明', '❓', '#FFFFFF'];
   }
 
-  // 表の生成
+  // ============== 表の生成（プルダウンでテキスト入力） ==============
   const tbody = document.getElementById('dataBody');
+
   function renderTable(){
     tbody.innerHTML = '';
     dailyData.forEach((item,i) => {
@@ -168,48 +184,41 @@
         changeTd.classList.add('nochange');
       }
 
-      const [weatherText, weatherIcon, bgColor] = weatherToTextIcon(item.weatherCode);
+      const [weatherText, weatherIcon] = weatherToTextIcon(item.weatherCode);
 
-      tr.innerHTML = `<td>${item.date}</td>
-                      <td>${item.pressure}</td>`;
+      // 体調プルダウン（テキスト）
+      const symptomTd = document.createElement('td');
+      const sel = document.createElement('select');
+      sel.className = 'score';
+      SCORE_LABELS.forEach(lbl => {
+        const opt = document.createElement('option');
+        opt.value = lbl;
+        opt.textContent = lbl;
+        sel.appendChild(opt);
+      });
+      // 既存データ → 選択、なければ「ふつう」
+      sel.value = symptomData[item.date] ?? "ふつう";
+      sel.addEventListener('change', e => {
+        const label = e.target.value;
+        symptomData[item.date] = label;
+        saveSymptomData();
+        updateChartData();
+      });
+      symptomTd.appendChild(sel);
+
+      tr.innerHTML = `<td>${item.date}</td><td>${item.pressure}</td>`;
       tr.appendChild(changeTd);
       tr.innerHTML += `<td title="${weatherText}">${weatherIcon}</td>`;
-
-      const symptomTd = document.createElement('td');
-      // 体調入力フォーム
-      const input = document.createElement('input');
-      input.type = 'number';
-      input.min = 1;
-      input.max = 5;
-      input.value = symptomData[item.date] ?? '';
-      input.title = '1〜5の数値を入力してください';
-      input.addEventListener('change', e => {
-        const val = Number(e.target.value);
-        if(val >=1 && val <=5){
-          symptomData[item.date] = val;
-          saveSymptomData();
-          updateChartData();
-        } else {
-          alert('1〜5の数値を入力してください');
-          e.target.value = symptomData[item.date] ?? '';
-        }
-      });
-      symptomTd.appendChild(input);
       tr.appendChild(symptomTd);
 
       tbody.appendChild(tr);
     });
   }
 
-  // グラフ更新関数
-  let chart;
-  function updateChartData(){
-    const symptomVals = dates.map(d => symptomData[d] ?? null);
-    chart.data.datasets[1].data = symptomVals;
-    chart.update();
-  }
+  // ============== グラフ ==============
+  const ctx = document.getElementById('pressureChart').getContext('2d');
 
-  // 背景色を天候ごとに付けるプラグイン
+  // 背景色を天候ごとに付けるプラグイン（やや濃いめ 0.3）
   const weatherBgPlugin = {
     id: 'weatherBg',
     beforeDraw(chart) {
@@ -219,25 +228,19 @@
         const [, , bgColor] = weatherToTextIcon(wCode);
 
         const xStart = i === 0 ? left : x.getPixelForValue(dailyData[i].date);
-        let xEnd;
-        if(i < dailyData.length - 1) {
-          xEnd = x.getPixelForValue(dailyData[i+1].date);
-        } else {
-          xEnd = right;
-        }
+        const xEnd = (i < dailyData.length - 1) ? x.getPixelForValue(dailyData[i+1].date) : right;
 
         ctx.save();
         ctx.fillStyle = bgColor;
-        ctx.globalAlpha = 0.15;
+        ctx.globalAlpha = 0.3;
         ctx.fillRect(xStart, top, xEnd - xStart, bottom - top);
         ctx.restore();
       }
     }
   };
 
-  // グラフ描画
-  const ctx = document.getElementById('pressureChart').getContext('2d');
-  chart = new Chart(ctx, {
+  // グラフ生成
+  const chart = new Chart(ctx, {
     type: 'line',
     data: {
       labels: dates,
@@ -251,18 +254,28 @@
           fill: true,
           tension: 0.3,
           pointRadius: 4,
-          order: 2
+          order: 2,
+          pointBackgroundColor: dailyData.map(d => {
+            if (d.pressure >= 1020) return 'orange';
+            if (d.pressure <= 1005) return 'red';
+            return 'blue';
+          })
         },
         {
-          label: '体調スコア (1〜5)',
-          data: dates.map(d => symptomData[d] ?? null),
+          label: '体調（1=とても悪い〜5=とても良い）',
+          data: dates.map(d => {
+            const lbl = symptomData[d]; // 文字
+            const sc = labelToScore(lbl);
+            return Number.isNaN(sc) ? NaN : sc; // 未入力は NaN で欠損扱い
+          }),
           yAxisID: 'yLeft',
           borderColor: 'rgba(255, 99, 132, 1)',
           backgroundColor: 'rgba(255, 99, 132, 0.15)',
           fill: true,
           tension: 0.3,
           pointRadius: 4,
-          order: 1
+          order: 1,
+          spanGaps: true
         }
       ]
     },
@@ -274,10 +287,13 @@
         yLeft: {
           type: 'linear',
           position: 'left',
-          min: 0,
+          min: 1,
           max: 5,
-          ticks: { stepSize: 1 },
-          title: { display: true, text: '体調スコア' }
+          ticks: {
+            stepSize: 1,
+            callback: (v) => scoreToLabel(v)
+          },
+          title: { display: true, text: '体調（テキストを数値化して表示）' }
         },
         yRight: {
           type: 'linear',
@@ -287,9 +303,7 @@
           grid: { drawOnChartArea: false },
           title: { display: true, text: '気圧 (hPa)' }
         },
-        x: {
-          title: { display: true, text: '日付' }
-        }
+        x: { title: { display: true, text: '日付' } }
       },
       plugins: {
         legend: { position: 'top' },
@@ -298,7 +312,14 @@
           mode: 'nearest',
           intersect: false,
           callbacks: {
-            label: ctx => ctx.dataset.label + ': ' + ctx.formattedValue
+            label: (ctx) => {
+              if (ctx.datasetIndex === 1) {
+                const v = ctx.parsed.y;
+                const label = Number.isFinite(v) ? scoreToLabel(v) : '未入力';
+                return `体調: ${label}`;
+              }
+              return `${ctx.dataset.label}: ${ctx.formattedValue}`;
+            }
           }
         }
       }
@@ -306,14 +327,25 @@
     plugins: [weatherBgPlugin]
   });
 
+  function updateChartData(){
+    const vals = dates.map(d => {
+      const lbl = symptomData[d];
+      const sc = labelToScore(lbl);
+      return Number.isNaN(sc) ? NaN : sc;
+    });
+    chart.data.datasets[1].data = vals;
+    chart.update();
+  }
+
+  // 初期描画
   renderTable();
 
-  // 表・グラフ切り替えボタン
+  // 表・グラフ切り替え
   const toggleBtn = document.getElementById('toggleBtn');
   const chartDiv = document.getElementById('chartContainer');
   const tableDiv = document.getElementById('tableContainer');
   toggleBtn.addEventListener('click', () => {
-    if(chartDiv.style.display === 'none'){
+    if (chartDiv.style.display === 'none') {
       chartDiv.style.display = 'block';
       tableDiv.style.display = 'none';
       toggleBtn.textContent = '表に切り替え';

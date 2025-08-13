@@ -2,15 +2,13 @@
   const lat = 35.6895;
   const lon = 139.6917;
 
-  // 今日の日付（API取得範囲）
   const today = new Date();
   const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - 30); // 過去30日分
+  startDate.setDate(startDate.getDate() - 30);
 
   const startDateStr = startDate.toISOString().split('T')[0];
   const endDateStr = today.toISOString().split('T')[0];
 
-  // API URL
   const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&start_date=${startDateStr}&end_date=${endDateStr}&hourly=pressure_msl&daily=weathercode&timezone=Asia%2FTokyo`;
 
   let json;
@@ -33,7 +31,6 @@
     return;
   }
 
-  // 日ごとに平均気圧を計算
   const times = json.hourly.time;
   const pressures = json.hourly.pressure_msl;
   const dailyDates = json.daily.time;
@@ -53,7 +50,6 @@
     return {date, avg: +avg.toFixed(1), weathercode};
   }).sort((a,b)=>a.date.localeCompare(b.date));
 
-  // 体調スコアテキスト
   const scoreText = {1:'悪い',2:'やや悪い',3:'ふつう',4:'やや良い',5:'良い'};
   const storageKey = 'symptomData';
   let symptomData = {};
@@ -71,23 +67,21 @@
     return days[new Date(dateStr).getDay()];
   }
 
-  // 天気コード→背景色
   function weatherCodeToColor(code){
     if(code === null) return 'transparent';
-    if([0].includes(code)) return '#fff9c4';  // 晴れ：薄黄色
-    if([1,2,3].includes(code)) return '#cfd8dc';  // 曇り：薄グレー
-    if([45,48].includes(code)) return '#b0bec5';  // 霧・霧雨
-    if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(code)) return '#90caf9'; // 雨系：薄青
-    if([71,73,75,77,85,86].includes(code)) return '#81d4fa'; // 雪系：薄水色
+    if([0].includes(code)) return '#fff9c4';
+    if([1,2,3].includes(code)) return '#cfd8dc';
+    if([45,48].includes(code)) return '#b0bec5';
+    if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(code)) return '#90caf9';
+    if([71,73,75,77,85,86].includes(code)) return '#81d4fa';
     return 'transparent';
   }
 
-  // テーブル描画
   const tbody = document.getElementById('dataBody');
   function renderTable(){
     tbody.innerHTML = '';
     const todayStr = new Date().toISOString().split('T')[0];
-    dailyData.forEach((d,i) => {
+    dailyData.forEach(d => {
       const tr = document.createElement('tr');
       if(d.date === todayStr) tr.classList.add('today');
 
@@ -103,7 +97,7 @@
       [1,2,3,4,5].forEach(v=>{
         const opt = document.createElement('option');
         opt.value = v;
-        opt.textContent = `${v} (${scoreText[v]})`;
+        opt.textContent = `${scoreText[v]} (${v})`;
         select.appendChild(opt);
       });
       select.value = symptomData[d.date]?.score ?? 3;
@@ -111,6 +105,7 @@
         if(!symptomData[d.date]) symptomData[d.date] = {};
         symptomData[d.date].score = Number(e.target.value);
         saveSymptomData();
+        renderChart();  // 体調色反映のためチャート再描画
       });
       symptomTd.appendChild(select);
 
@@ -142,7 +137,6 @@
     });
   }
 
-  // グラフ作成
   const ctx = document.getElementById('pressureChart').getContext('2d');
   let chart = null;
 
@@ -154,11 +148,11 @@
     const symptomColors = dailyData.map(d => {
       const score = symptomData[d.date]?.score ?? 3;
       switch(score){
-        case 1: return '#d32f2f'; // 赤
-        case 2: return '#f57c00'; // オレンジ
-        case 3: return '#666';    // グレー
-        case 4: return '#388e3c'; // 緑
-        case 5: return '#1976d2'; // 青
+        case 1: return '#d32f2f';
+        case 2: return '#f57c00';
+        case 3: return '#666';
+        case 4: return '#388e3c';
+        case 5: return '#1976d2';
         default: return '#666';
       }
     });
@@ -210,7 +204,6 @@
     });
   }
 
-  // ボタン切替
   const btnGraph = document.getElementById('btnGraph');
   const btnTable = document.getElementById('btnTable');
   const chartContainer = document.getElementById('chartContainer');
@@ -225,11 +218,9 @@
     tableContainer.style.display = 'block';
   });
 
-  // 初期表示
   renderChart();
   renderTable();
 
-  // 最初はグラフ表示
   chartContainer.style.display = 'block';
   tableContainer.style.display = 'none';
 

@@ -1,39 +1,212 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>天気と気圧データ</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8">
+<title>気圧＆体調スコア記録</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+    }
+    canvas {
+        max-width: 100%;
+        margin-top: 20px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    th, td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: center;
+    }
+    th {
+        background-color: #f2f2f2;
+    }
+    button {
+        margin: 5px;
+        padding: 5px 10px;
+    }
+</style>
 </head>
 <body>
-    <h1>天気と気圧データ</h1>
 
-    <!-- 切り替えボタン -->
-    <div class="tab-buttons">
-        <button id="showGraph" class="active">グラフ</button>
-        <button id="showTable">表</button>
-    </div>
+<h2>気圧＆体調スコア記録</h2>
 
-    <!-- グラフ表示 -->
-    <div id="graphSection">
-        <canvas id="pressureChart"></canvas>
-    </div>
+<label for="dateInput">日付:</label>
+<input type="date" id="dateInput">
 
-    <!-- 表表示 -->
-    <div id="tableSection" style="display: none;">
-        <table id="weatherTable">
-            <thead>
-                <tr>
-                    <th>日時</th>
-                    <th>気圧 (hPa)</th>
-                    <th>天気コード</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-    </div>
+<label for="conditionScore">体調スコア:</label>
+<select id="conditionScore">
+    <option value="良い">良い</option>
+    <option value="ふつう" selected>ふつう</option>
+    <option value="悪い">悪い</option>
+</select>
 
-    <script src="script.js"></script>
+<button id="saveBtn">保存</button>
+<button id="showGraph">グラフ表示</button>
+<button id="showTable">表表示</button>
+
+<div id="graphContainer">
+    <canvas id="pressureChart"></canvas>
+</div>
+
+<div id="tableContainer" style="display:none;">
+    <table id="dataTable">
+        <thead>
+            <tr>
+                <th>日付</th>
+                <th>曜日</th>
+                <th>気圧(hPa)</th>
+                <th>天気</th>
+                <th>体調スコア</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<script>
+const ctx = document.getElementById('pressureChart').getContext('2d');
+let chart;
+
+const days = ["日","月","火","水","木","金","土"];
+let storedData = JSON.parse(localStorage.getItem("healthData")) || [];
+
+document.getElementById('saveBtn').addEventListener('click', () => {
+    const date = document.getElementById('dateInput').value;
+    const score = document.getElementById('conditionScore').value;
+    if (!date) {
+        alert("日付を入力してください");
+        return;
+    }
+    fetchPressureData(date, score);
+});
+
+document.getElementById('showGraph').addEventListener('click', () => {
+    document.getElementById('graphContainer').style.display = 'block';
+    document.getElementById('tableContainer').style.display = 'none';
+    renderChart();
+});
+
+document.getElementById('showTable').addEventListener('click', () => {
+    document.getElementById('graphContainer').style.display = 'none';
+    document.getElementById('tableContainer').style.display = 'block';
+    renderTable();
+});
+
+function fetchPressureData(date, score) {
+    const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=35.6895&longitude=139.6917&hourly=surface_pressure,weathercode&start_date=${date}&end_date=${date}&timezone=Asia/Tokyo`;
+    fetch(apiUrl)
+        .then(res => res.json())
+        .then(data => {
+            if (!data.hourly || !data.hourly.surface_pressure) {
+                alert("データが取得できませんでした");
+                return;
+            }
+            const avgPressure = average(data.hourly.surface_pressure);
+            const weatherCode = data.hourly.weathercode[12]; // 正午の天気コード
+            const weatherText = weatherCodeToText(weatherCode);
+            const dow = days[new Date(date).getDay()];
+
+            storedData.push({ date, dow, pressure: avgPressure, weather: weatherText, score });
+            localStorage.setItem("healthData", JSON.stringify(storedData));
+
+            renderChart();
+            renderTable();
+        })
+        .catch(err => console.error(err));
+}
+
+function average(arr) {
+    return (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1);
+}
+
+function weatherCodeToText(code) {
+    const map = {
+        0: "晴れ",
+        1: "晴れ時々曇り",
+        2: "曇り",
+        3: "曇り",
+        45: "霧",
+        48: "霧氷",
+        51: "小雨",
+        53: "雨",
+        55: "大雨",
+        61: "小雪",
+        63: "雪",
+        65: "大雪"
+    };
+    return map[code] || "不明";
+}
+
+function renderChart() {
+    const labels = storedData.map(d => `${d.date}(${d.dow})`);
+    const pressures = storedData.map(d => d.pressure);
+    const scores = storedData.map(d => {
+        if (d.score === "良い") return 3;
+        if (d.score === "ふつう") return 2;
+        if (d.score === "悪い") return 1;
+    });
+
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: '気圧(hPa)',
+                    data: pressures,
+                    borderColor: 'blue',
+                    backgroundColor: 'lightblue',
+                    yAxisID: 'y'
+                },
+                {
+                    label: '体調スコア',
+                    data: scores,
+                    borderColor: 'orange',
+                    backgroundColor: 'yellow',
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    type: 'linear',
+                    position: 'left',
+                    min: 980,
+                    max: 1050
+                },
+                y1: {
+                    type: 'linear',
+                    position: 'right',
+                    min: 0,
+                    max: 3
+                }
+            }
+        }
+    });
+}
+
+function renderTable() {
+    const tbody = document.querySelector('#dataTable tbody');
+    tbody.innerHTML = "";
+    storedData.forEach(d => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${d.date}</td><td>${d.dow}</td><td>${d.pressure}</td><td>${d.weather}</td><td>${d.score}</td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+renderChart();
+renderTable();
+</script>
+
 </body>
 </html>

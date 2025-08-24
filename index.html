@@ -6,34 +6,35 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
-      font-family: sans-serif;
+      font-family: Arial, sans-serif;
       margin: 20px;
-      background: #f9f9f9;
+      background-color: #f9f9f9;
     }
     h1 {
-      font-size: 20px;
-      margin-bottom: 10px;
+      text-align: center;
     }
     form {
       margin-bottom: 20px;
-      background: #fff;
       padding: 15px;
+      background: #fff;
       border-radius: 8px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     label {
-      margin-right: 10px;
+      display: block;
+      margin: 10px 0 5px;
     }
-    select, input, button {
-      margin: 5px 0;
-      padding: 5px;
-      font-size: 14px;
+    select, input[type="date"], button {
+      padding: 8px;
+      margin-bottom: 10px;
+      width: 100%;
+      max-width: 300px;
     }
     canvas {
       background: #fff;
-      border: 1px solid #ccc;
-      border-radius: 8px;
       padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
   </style>
 </head>
@@ -42,85 +43,76 @@
   <form id="healthForm">
     <label for="date">日付:</label>
     <input type="date" id="date" required>
-    <label for="condition">体調:</label>
+
+    <label for="condition">体調スコア:</label>
     <select id="condition" required>
       <option value="" disabled selected>体調を選ぶ</option>
-      <option value="3">良い</option>
-      <option value="2">ふつう</option>
-      <option value="1">悪い</option>
+      <option value="ふつう">ふつう</option>
+      <option value="良い">良い</option>
+      <option value="とても良い">とても良い</option>
     </select>
-    <button type="submit">記録</button>
+
+    <button type="submit">記録する</button>
   </form>
 
   <canvas id="healthChart" width="400" height="200"></canvas>
 
   <script>
+    const form = document.getElementById('healthForm');
     const ctx = document.getElementById('healthChart').getContext('2d');
-    const storedData = JSON.parse(localStorage.getItem('healthData')) || [];
 
-    function formatDateWithDay(dateStr) {
-      const days = ["日","月","火","水","木","金","土"];
-      const date = new Date(dateStr + "T00:00:00");
-      return `${date.getMonth()+1}/${date.getDate()}(${days[date.getDay()]})`;
-    }
+    const conditionMap = { "ふつう": 1, "良い": 2, "とても良い": 3 };
+
+    let healthData = JSON.parse(localStorage.getItem("healthData")) || [];
 
     const chart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: storedData.map(d => formatDateWithDay(d.date)),
+        labels: healthData.map(d => d.date),
         datasets: [{
           label: '体調スコア',
-          data: storedData.map(d => d.condition),
+          data: healthData.map(d => conditionMap[d.condition]),
           borderColor: 'blue',
-          backgroundColor: 'rgba(0,0,255,0.1)',
-          fill: true,
-          tension: 0.3,
+          backgroundColor: 'lightblue',
+          fill: false,
+          tension: 0.2
         }]
       },
       options: {
+        responsive: true,
         scales: {
           y: {
-            min: 0,
-            max: 3,
             ticks: {
-              stepSize: 1,
               callback: function(value) {
-                if (value === 1) return "悪い";
-                if (value === 2) return "ふつう";
-                if (value === 3) return "良い";
-                return "";
+                return Object.keys(conditionMap).find(key => conditionMap[key] === value);
               }
-            }
+            },
+            beginAtZero: true,
+            stepSize: 1,
+            min: 0,
+            max: 3
           }
         }
       }
     });
 
-    document.getElementById('healthForm').addEventListener('submit', function(e) {
+    form.addEventListener('submit', function(e) {
       e.preventDefault();
+
       const date = document.getElementById('date').value;
       const condition = document.getElementById('condition').value;
 
-      if (!date || !condition) return; // 入力が不完全なら無視
+      if (!date || !condition) return;
 
-      const newEntry = { date, condition: parseInt(condition) };
-
-      // 既存の日付データがあれば上書き
-      const existingIndex = storedData.findIndex(d => d.date === date);
+      // 同じ日付のデータがある場合は更新
+      const existingIndex = healthData.findIndex(d => d.date === date);
       if (existingIndex >= 0) {
-        storedData[existingIndex] = newEntry;
+        healthData[existingIndex].condition = condition;
       } else {
-        storedData.push(newEntry);
+        healthData.push({ date, condition });
       }
 
-      localStorage.setItem('healthData', JSON.stringify(storedData));
+      localStorage.setItem("healthData", JSON.stringify(healthData));
 
-      chart.data.labels = storedData.map(d => formatDateWithDay(d.date));
-      chart.data.datasets[0].data = storedData.map(d => d.condition);
-      chart.update();
-
-      this.reset();
-    });
-  </script>
-</body>
-</html>
+      chart.data.labels = healthData.map(d => d.date);
+      chart.data.datasets[0].data = healthData.map(d => conditionMap[d.condition]);

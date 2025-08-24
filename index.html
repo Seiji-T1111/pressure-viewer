@@ -137,7 +137,6 @@
       else if(change<0){changeTd.innerHTML=`▼ ${Math.abs(change)} hPa`; changeTd.classList.add('down');}
       else{changeTd.textContent='±0.0'; changeTd.classList.add('nochange');}
 
-      const [weatherText, weatherIcon] = weatherToTextIcon(item.weather
             const [weatherText, weatherIcon] = weatherToTextIcon(item.weatherCode);
 
       // 体調プルダウン（未入力時「体調を入力」を表示）
@@ -281,3 +280,4 @@
 </body>
 </html>
 
+      

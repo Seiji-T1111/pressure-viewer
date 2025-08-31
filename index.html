@@ -1,71 +1,82 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>体調・気分ビューアー</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    #controls { margin-bottom: 10px; }
-    canvas { max-width: 100%; }
-  </style>
+<meta charset="UTF-8">
+<title>体調ビューアー</title>
+<style>
+  body { font-family: sans-serif; padding: 20px; }
+  #controls { margin-bottom: 10px; }
+  canvas { max-width: 100%; }
+</style>
 </head>
 <body>
 
-<h1>体調・気分ビューアー</h1>
+<h1>体調ビューアー</h1>
 
 <div id="controls">
-  <label for="periodSelect">表示期間：</label>
+  <label for="periodSelect">表示期間:</label>
   <select id="periodSelect">
     <option value="7">7日間</option>
     <option value="14" selected>14日間</option>
-    <option value="30">1か月</option>
-    <option value="90">3か月</option>
+    <option value="30">30日間</option>
+    <option value="90">3ヶ月</option>
   </select>
 </div>
 
-<canvas id="chart"></canvas>
+<canvas id="moodChart"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-const rawData = [
-  // ここに元のデータを配列形式で入れる
-  // 例: { date: '2025-08-01', mood: 3, memo: '普通' },
-];
+const chartCanvas = document.getElementById('moodChart').getContext('2d');
+let moodData = JSON.parse(localStorage.getItem('moodData') || '[]');
 
-const ctx = document.getElementById('chart').getContext('2d');
-let chart;
-
-function renderChart(days) {
+function renderChart(periodDays) {
   const now = new Date();
-  const cutoff = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
-  const filtered = rawData.filter(d => new Date(d.date) >= cutoff);
-  const labels = filtered.map(d => d.date);
-  const data = filtered.map(d => d.mood);
+  const filteredData = moodData.filter(item => {
+    const itemDate = new Date(item.date);
+    const diffDays = (now - itemDate)/(1000*60*60*24);
+    return diffDays <= periodDays;
+  }).sort((a,b)=> new Date(a.date)-new Date(b.date));
 
-  if(chart) chart.destroy();
+  const labels = filteredData.map(d => d.date);
+  const values = filteredData.map(d => d.mood);
 
-  chart = new Chart(ctx, {
+  if(window.moodChartInstance) {
+    window.moodChartInstance.destroy();
+  }
+
+  window.moodChartInstance = new Chart(chartCanvas, {
     type: 'line',
     data: {
       labels: labels,
       datasets: [{
-        label: '気分',
-        data: data,
+        label: '体調',
+        data: values,
         borderColor: 'blue',
-        backgroundColor: 'rgba(0,0,255,0.1)',
+        backgroundColor: 'rgba(0,0,255,0.2)',
         fill: true,
-        tension: 0.2
+        tension: 0.3
       }]
     },
     options: {
-      scales: { y: { min: 1, max: 5, ticks: { stepSize: 1 } } },
-      plugins: { legend: { display: false } }
+      responsive: true,
+      scales: {
+        y: {
+          min: 1,
+          max: 5,
+          ticks: { stepSize: 1 }
+        },
+        x: {
+          ticks: { autoSkip: true, maxTicksLimit: 10 }
+        }
+      }
     }
   });
 }
 
-document.getElementById('periodSelect').addEventListener('change', e => {
-  renderChart(parseInt(e.target.value));
+document.getElementById('periodSelect').addEventListener('change', (e)=>{
+  const days = parseInt(e.target.value);
+  renderChart(days);
 });
 
 // 初期表示

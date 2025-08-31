@@ -1,112 +1,101 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>血圧ビューアー</title>
+  <meta charset="UTF-8">
+  <title>pressure-viewer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
-      font-family: sans-serif;
-      padding: 20px;
-      background: #f9f9f9;
-    }
-    .container {
-      max-width: 900px;
-      margin: auto;
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    }
-    h1 {
-      text-align: center;
+      font-family: Arial, sans-serif;
+      margin: 20px;
     }
     #controls {
-      text-align: center;
       margin-bottom: 20px;
     }
     select {
-      padding: 6px 10px;
-      font-size: 16px;
+      padding: 5px;
+      font-size: 14px;
     }
     canvas {
-      width: 100% !important;
-      height: 400px !important;
+      max-width: 100%;
+      height: 400px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>血圧ビューアー</h1>
+  <h2>血圧データビューアー</h2>
 
-    <!-- プルダウン -->
-    <div id="controls">
-      <label for="rangeSelect">表示期間：</label>
-      <select id="rangeSelect">
-        <option value="7">直近7日</option>
-        <option value="14" selected>直近14日</option>
-        <option value="30">直近30日</option>
-        <option value="90">直近3ヶ月</option>
-      </select>
-    </div>
-
-    <!-- グラフ -->
-    <canvas id="bpChart"></canvas>
+  <div id="controls">
+    <label for="rangeSelect">表示期間: </label>
+    <select id="rangeSelect">
+      <option value="7">直近7日</option>
+      <option value="14" selected>直近14日</option>
+      <option value="30">直近30日</option>
+      <option value="90">直近90日</option>
+    </select>
   </div>
 
+  <canvas id="bpChart"></canvas>
+
   <script>
-    // ★ Google Apps Script Web API のURLをここに設定してください
-    const API_URL = "https://script.google.com/macros/s/XXXX/exec";
+    // Google Apps Script から取得する公開JSONのURLに置き換えてください
+    const DATA_URL = "https://script.google.com/macros/s/XXXXXXXXXXXXXXXXXXXX/exec";
 
-    let chart;
     let allData = [];
+    let chart;
 
-    // データ取得
     async function fetchData() {
-      const res = await fetch(API_URL);
-      const data = await res.json();
-      allData = data;
-      updateChart(14); // デフォルト14日
+      const response = await fetch(DATA_URL);
+      const data = await response.json();
+      // 日付をDate型に変換し、降順にソート
+      allData = data.map(d => ({
+        date: new Date(d.date),
+        sys: Number(d.sys),
+        dia: Number(d.dia),
+        pulse: Number(d.pulse)
+      })).sort((a, b) => a.date - b.date);
+
+      updateChart(14); // 初期表示: 14日
     }
 
-    // グラフ更新
     function updateChart(days) {
-      if (!allData.length) return;
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(endDate.getDate() - days + 1);
 
-      const now = new Date();
-      const cutoff = new Date();
-      cutoff.setDate(now.getDate() - days);
+      const filtered = allData.filter(d => d.date >= startDate && d.date <= endDate);
 
-      // データをフィルタリング
-      const filtered = allData.filter(item => {
-        const d = new Date(item.date);
-        return d >= cutoff;
-      });
+      const labels = filtered.map(d => d.date.toLocaleDateString());
+      const sys = filtered.map(d => d.sys);
+      const dia = filtered.map(d => d.dia);
+      const pulse = filtered.map(d => d.pulse);
 
-      const labels = filtered.map(item => item.date);
-      const sys = filtered.map(item => item.systolic);
-      const dia = filtered.map(item => item.diastolic);
+      if (chart) {
+        chart.destroy();
+      }
 
       const ctx = document.getElementById("bpChart").getContext("2d");
-
-      if (chart) chart.destroy();
-
       chart = new Chart(ctx, {
         type: "line",
         data: {
           labels: labels,
           datasets: [
             {
-              label: "収縮期血圧 (上)",
+              label: "収縮期 (SYS)",
               data: sys,
               borderColor: "red",
               fill: false
             },
             {
-              label: "拡張期血圧 (下)",
+              label: "拡張期 (DIA)",
               data: dia,
               borderColor: "blue",
+              fill: false
+            },
+            {
+              label: "脈拍 (Pulse)",
+              data: pulse,
+              borderColor: "green",
               fill: false
             }
           ]
@@ -114,17 +103,25 @@
         options: {
           responsive: true,
           plugins: {
-            legend: { position: "top" },
-            title: { display: true, text: `直近${days}日の血圧推移` }
+            legend: {
+              position: "top"
+            },
+            title: {
+              display: true,
+              text: `血圧データ (${days}日間)`
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: false
+            }
           }
         }
       });
     }
 
-    // プルダウン操作
     document.getElementById("rangeSelect").addEventListener("change", (e) => {
-      const days = parseInt(e.target.value, 10);
-      updateChart(days);
+      updateChart(Number(e.target.value));
     });
 
     fetchData();

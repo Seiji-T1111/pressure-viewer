@@ -1,95 +1,75 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>体調・血圧ビューアー</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 20px; }
-  select { margin-bottom: 20px; }
-  canvas { max-width: 100%; }
-</style>
+  <meta charset="UTF-8">
+  <title>体調・気分ビューアー</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #controls { margin-bottom: 10px; }
+    canvas { max-width: 100%; }
+  </style>
 </head>
 <body>
 
-<h2>体調・血圧グラフ</h2>
+<h1>体調・気分ビューアー</h1>
 
-<label for="periodSelect">表示期間：</label>
-<select id="periodSelect">
-  <option value="7">7日間</option>
-  <option value="14" selected>14日間</option>
-  <option value="30">30日間</option>
-  <option value="90">3か月</option>
-  <option value="all">全期間</option>
-</select>
+<div id="controls">
+  <label for="periodSelect">表示期間：</label>
+  <select id="periodSelect">
+    <option value="7">7日間</option>
+    <option value="14" selected>14日間</option>
+    <option value="30">1か月</option>
+    <option value="90">3か月</option>
+  </select>
+</div>
 
-<canvas id="pressureChart"></canvas>
+<canvas id="chart"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-const ctx = document.getElementById('pressureChart').getContext('2d');
-
-// 仮データ例（GitHub Pagesに置いてあるJSON等をfetchして読み込む場合は適宜変更）
-let allData = [
-  // date, systolic, diastolic, mood
-  { date: '2025-08-01', systolic: 120, diastolic: 80, mood: 3 },
-  { date: '2025-08-02', systolic: 118, diastolic: 79, mood: 4 },
-  { date: '2025-08-03', systolic: 125, diastolic: 82, mood: 2 },
-  // ... すべての日付データをここに
+const rawData = [
+  // ここに元のデータを配列形式で入れる
+  // 例: { date: '2025-08-01', mood: 3, memo: '普通' },
 ];
 
+const ctx = document.getElementById('chart').getContext('2d');
 let chart;
 
-function updateChart(period) {
-  let filteredData;
-  if(period === 'all') {
-    filteredData = allData;
-  } else {
-    const days = parseInt(period, 10);
-    filteredData = allData.slice(-days);
-  }
+function renderChart(days) {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+  const filtered = rawData.filter(d => new Date(d.date) >= cutoff);
+  const labels = filtered.map(d => d.date);
+  const data = filtered.map(d => d.mood);
 
-  const labels = filteredData.map(d => d.date);
-  const systolic = filteredData.map(d => d.systolic);
-  const diastolic = filteredData.map(d => d.diastolic);
-  const mood = filteredData.map(d => d.mood);
+  if(chart) chart.destroy();
 
-  const data = {
-    labels,
-    datasets: [
-      { label: '収縮期 (Systolic)', data: systolic, borderColor: 'red', fill: false },
-      { label: '拡張期 (Diastolic)', data: diastolic, borderColor: 'blue', fill: false },
-      { label: '体調 (Mood)', data: mood, borderColor: 'green', fill: false, yAxisID: 'yMood' }
-    ]
-  };
-
-  const config = {
+  chart = new Chart(ctx, {
     type: 'line',
-    data,
+    data: {
+      labels: labels,
+      datasets: [{
+        label: '気分',
+        data: data,
+        borderColor: 'blue',
+        backgroundColor: 'rgba(0,0,255,0.1)',
+        fill: true,
+        tension: 0.2
+      }]
+    },
     options: {
-      responsive: true,
-      interaction: { mode: 'index', intersect: false },
-      stacked: false,
-      scales: {
-        y: { type: 'linear', display: true, position: 'left', title: { display: true, text: '血圧' } },
-        yMood: { type: 'linear', display: true, position: 'right', title: { display: true, text: '体調' }, min: 1, max: 5, ticks: { stepSize: 1 } }
-      }
+      scales: { y: { min: 1, max: 5, ticks: { stepSize: 1 } } },
+      plugins: { legend: { display: false } }
     }
-  };
-
-  if(chart) {
-    chart.destroy();
-  }
-  chart = new Chart(ctx, config);
+  });
 }
 
-// 初期表示
-updateChart('14');
-
-// プルダウン変更時
 document.getElementById('periodSelect').addEventListener('change', e => {
-  updateChart(e.target.value);
+  renderChart(parseInt(e.target.value));
 });
+
+// 初期表示
+renderChart(parseInt(document.getElementById('periodSelect').value));
 </script>
 
 </body>

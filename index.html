@@ -1,87 +1,98 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>体調ビューアー</title>
-<style>
-  body { font-family: sans-serif; padding: 20px; }
-  #controls { margin-bottom: 10px; }
-  canvas { max-width: 100%; }
-</style>
+  <meta charset="UTF-8">
+  <title>体調グラフ</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #controls { margin-bottom: 20px; }
+    #moodChart { max-width: 800px; height: 400px; }
+  </style>
 </head>
 <body>
+  <h1>体調グラフ</h1>
 
-<h1>体調ビューアー</h1>
+  <div id="controls">
+    表示期間：
+    <select id="periodSelect">
+      <option value="7">7日</option>
+      <option value="14" selected>14日</option>
+      <option value="30">30日</option>
+      <option value="90">3ヶ月</option>
+    </select>
+  </div>
 
-<div id="controls">
-  <label for="periodSelect">表示期間:</label>
-  <select id="periodSelect">
-    <option value="7">7日間</option>
-    <option value="14" selected>14日間</option>
-    <option value="30">30日間</option>
-    <option value="90">3ヶ月</option>
-  </select>
-</div>
+  <canvas id="moodChart"></canvas>
 
-<canvas id="moodChart"></canvas>
+  <script>
+    // ここに過去データを allData に格納（以前のバージョンで使われていた方法）
+    let allData = [
+      { date: '2025-08-01', mood: 3, memo: '' },
+      { date: '2025-08-02', mood: 4, memo: '' },
+      { date: '2025-08-03', mood: 2, memo: '' },
+      { date: '2025-08-04', mood: 3, memo: '' },
+      { date: '2025-08-05', mood: 5, memo: '' },
+      { date: '2025-08-06', mood: 4, memo: '' },
+      { date: '2025-08-07', mood: 3, memo: '' },
+      { date: '2025-08-08', mood: 2, memo: '' },
+      { date: '2025-08-09', mood: 3, memo: '' },
+      { date: '2025-08-10', mood: 4, memo: '' },
+      { date: '2025-08-11', mood: 3, memo: '' },
+      { date: '2025-08-12', mood: 5, memo: '' },
+      { date: '2025-08-13', mood: 4, memo: '' },
+      { date: '2025-08-14', mood: 3, memo: '' }
+      // 必要に応じて全データを追加
+    ];
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-const chartCanvas = document.getElementById('moodChart').getContext('2d');
-let moodData = JSON.parse(localStorage.getItem('moodData') || '[]');
+    const ctx = document.getElementById('moodChart').getContext('2d');
+    let chart;
 
-function renderChart(periodDays) {
-  const now = new Date();
-  const filteredData = moodData.filter(item => {
-    const itemDate = new Date(item.date);
-    const diffDays = (now - itemDate)/(1000*60*60*24);
-    return diffDays <= periodDays;
-  }).sort((a,b)=> new Date(a.date)-new Date(b.date));
+    function updateChart(days) {
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(endDate.getDate() - days + 1);
 
-  const labels = filteredData.map(d => d.date);
-  const values = filteredData.map(d => d.mood);
+      const filtered = allData.filter(d => {
+        const dt = new Date(d.date);
+        return dt >= startDate && dt <= endDate;
+      });
 
-  if(window.moodChartInstance) {
-    window.moodChartInstance.destroy();
-  }
+      const labels = filtered.map(d => d.date);
+      const data = filtered.map(d => d.mood);
 
-  window.moodChartInstance = new Chart(chartCanvas, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: '体調',
-        data: values,
-        borderColor: 'blue',
-        backgroundColor: 'rgba(0,0,255,0.2)',
-        fill: true,
-        tension: 0.3
-      }]
-    },
-    options: {
-      responsive: true,
-      scales: {
-        y: {
-          min: 1,
-          max: 5,
-          ticks: { stepSize: 1 }
+      if (chart) chart.destroy();
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '体調',
+            data: data,
+            borderColor: 'blue',
+            fill: false
+          }]
         },
-        x: {
-          ticks: { autoSkip: true, maxTicksLimit: 10 }
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: true }
+          },
+          scales: {
+            y: { min: 1, max: 5, ticks: { stepSize: 1 } }
+          }
         }
-      }
+      });
     }
-  });
-}
 
-document.getElementById('periodSelect').addEventListener('change', (e)=>{
-  const days = parseInt(e.target.value);
-  renderChart(days);
-});
+    // 初期表示
+    updateChart(14);
 
-// 初期表示
-renderChart(parseInt(document.getElementById('periodSelect').value));
-</script>
-
+    // プルダウン変更時に更新
+    document.getElementById('periodSelect').addEventListener('change', (e) => {
+      updateChart(parseInt(e.target.value));
+    });
+  </script>
 </body>
 </html>

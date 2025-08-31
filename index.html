@@ -1,98 +1,296 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>体調グラフ</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    #controls { margin-bottom: 20px; }
-    #moodChart { max-width: 800px; height: 400px; }
-  </style>
+<meta charset="UTF-8" />
+<title>気圧・体調入力とグラフ（東京・過去14日間）</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: sans-serif; margin: 20px; background: #f8f9fa; }
+  h1 { font-size: 1.4em; margin-bottom: 12px; }
+  #toggleBtn { margin-bottom: 16px; padding: 8px 12px; cursor: pointer; }
+  #chartContainer, #tableContainer {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    padding: 20px;
+    max-width: 1000px;
+    margin-bottom: 24px;
+  }
+  #tableContainer { display: none; max-height: 500px; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: middle; }
+  th { background: #f3f3f3; }
+  tr.today { background: #fff7cc; font-weight: 700; }
+  .up { color: #1b6e20; }
+  .down { color: #c02828; }
+  .nochange { color: #666; }
+  select.score {
+    padding: 4px 6px; border-radius: 6px; border: 1px solid #ccc; background: #fff;
+  }
+</style>
 </head>
 <body>
-  <h1>体調グラフ</h1>
+<h1>過去14日間の東京の気圧・体調スコア入力（天候背景付き）</h1>
+<button id="toggleBtn">表に切り替え</button>
 
-  <div id="controls">
-    表示期間：
-    <select id="periodSelect">
-      <option value="7">7日</option>
-      <option value="14" selected>14日</option>
-      <option value="30">30日</option>
-      <option value="90">3ヶ月</option>
-    </select>
-  </div>
+<div id="chartContainer">
+  <canvas id="pressureChart"></canvas>
+</div>
 
-  <canvas id="moodChart"></canvas>
+<div id="tableContainer">
+  <table>
+    <thead>
+      <tr>
+        <th>日付</th><th>平均気圧 (hPa)</th><th>前日比</th><th>天候</th><th>体調（プルダウン）</th>
+      </tr>
+    </thead>
+    <tbody id="dataBody"></tbody>
+  </table>
+</div>
 
-  <script>
-    // ここに過去データを allData に格納（以前のバージョンで使われていた方法）
-    let allData = [
-      { date: '2025-08-01', mood: 3, memo: '' },
-      { date: '2025-08-02', mood: 4, memo: '' },
-      { date: '2025-08-03', mood: 2, memo: '' },
-      { date: '2025-08-04', mood: 3, memo: '' },
-      { date: '2025-08-05', mood: 5, memo: '' },
-      { date: '2025-08-06', mood: 4, memo: '' },
-      { date: '2025-08-07', mood: 3, memo: '' },
-      { date: '2025-08-08', mood: 2, memo: '' },
-      { date: '2025-08-09', mood: 3, memo: '' },
-      { date: '2025-08-10', mood: 4, memo: '' },
-      { date: '2025-08-11', mood: 3, memo: '' },
-      { date: '2025-08-12', mood: 5, memo: '' },
-      { date: '2025-08-13', mood: 4, memo: '' },
-      { date: '2025-08-14', mood: 3, memo: '' }
-      // 必要に応じて全データを追加
-    ];
+<script>
+(async function() {
+  const SCORE_LABELS = ["とても悪い","悪い","ふつう","良い","とても良い"];
+  const labelToScore = (label) => {
+    const idx = SCORE_LABELS.indexOf(label);
+    return idx >= 0 ? idx + 1 : NaN; 
+  };
+  const scoreToLabel = (score) => {
+    const n = Number(score);
+    return n >= 1 && n <= 5 ? SCORE_LABELS[n - 1] : "ふつう";
+  };
 
-    const ctx = document.getElementById('moodChart').getContext('2d');
-    let chart;
+  const lat = 35.6895, lon = 139.6917;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=pressure_msl,weathercode&timezone=Asia/Tokyo&past_days=14`;
+  const res = await fetch(url);
+  const data = await res.json();
 
-    function updateChart(days) {
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(endDate.getDate() - days + 1);
+  const times = data?.hourly?.time ?? [];
+  const pressures = data?.hourly?.pressure_msl ?? [];
+  const weatherCodes = data?.hourly?.weathercode ?? [];
+  const today = new Date().toISOString().split('T')[0];
+  const todayDate = new Date(today);
 
-      const filtered = allData.filter(d => {
-        const dt = new Date(d.date);
-        return dt >= startDate && dt <= endDate;
+  const daily = {};
+  for (let i = 0; i < times.length; i++) {
+    const dateStr = times[i].split('T')[0];
+    const dateObj = new Date(dateStr);
+    if (dateObj > todayDate) continue;
+    if (!daily[dateStr]) daily[dateStr] = { pressure: [], weather: [] };
+    daily[dateStr].pressure.push(pressures[i]);
+    daily[dateStr].weather.push(weatherCodes[i]);
+  }
+
+  const dates = Object.keys(daily).sort();
+
+  const mode = (arr) => {
+    const freq = {};
+    arr.forEach(v => { freq[v] = (freq[v] || 0) + 1; });
+    return Number(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);
+  };
+
+  const dailyData = dates.map(d => {
+    const pAvg = daily[d].pressure.reduce((a,b)=>a+b,0)/daily[d].pressure.length;
+    const wMode = mode(daily[d].weather);
+    return { date: d, pressure: +pAvg.toFixed(1), weatherCode: wMode };
+  });
+
+  const storageKey = 'userSymptomData';
+  let symptomData = {};
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) symptomData = JSON.parse(stored);
+  } catch(e) { console.warn(e); }
+
+  const saveSymptomData = () => localStorage.setItem(storageKey, JSON.stringify(symptomData));
+
+  function weatherToTextIcon(code){
+    const map = {
+      0: ['晴れ','☀️','#FFEE93'], 1:['主に晴れ','🌤️','#FFE6A7'], 2:['一部曇り','⛅','#D0D0D0'],
+      3:['曇り','☁️','#A0A0A0'], 45:['霧','🌫️','#C8C8C8'],48:['霧（氷晶）','🌫️','#C8C8C8'],
+      51:['霧雨（弱）','🌦️','#9BC4E2'],53:['霧雨（中）','🌧️','#739ED1'],55:['霧雨（強）','🌧️','#4D78C1'],
+      56:['凍結霧雨（弱）','🌧️❄️','#7BA1C7'],57:['凍結霧雨（強）','🌧️❄️','#5675AA'],
+      61:['小雨（弱）','🌧️','#79A7D3'],63:['小雨（中）','🌧️','#5787B4'],65:['小雨（強）','🌧️','#3C5D8E'],
+      66:['凍結小雨（弱）','🌧️❄️','#6A89B8'],67:['凍結小雨（強）','🌧️❄️','#476597'],
+      71:['小雪（弱）','🌨️','#B4C6D9'],73:['小雪（中）','🌨️','#94AED5'],75:['小雪（強）','🌨️','#7597D1'],
+      77:['霰','🌨️','#7597D1'],80:['にわか雨（弱）','🌧️⛈️','#5376B3'],81:['にわか雨（中）','🌧️⛈️','#4B6CA4'],
+      82:['にわか雨（強）','🌧️⛈️','#41608E'],85:['にわか雪（弱）','🌨️❄️','#8298CF'],86:['にわか雪（強）','🌨️❄️','#6B85B9'],
+      95:['雷雨','⛈️','#365F94'],96:['雷雨（小粒の雹）','⛈️❄️','#2E4E77'],99:['雷雨（大粒の雹）','⛈️❄️','#24425B']
+    };
+    return map[code]||['不明','❓','#FFFFFF'];
+  }
+
+  const tbody = document.getElementById('dataBody');
+  function renderTable(){
+    tbody.innerHTML = '';
+    dailyData.forEach((item,i)=>{
+      const tr = document.createElement('tr');
+      if(item.date===today) tr.classList.add('today');
+
+      const change = i===0 ? null : +(dailyData[i].pressure - dailyData[i-1].pressure).toFixed(1);
+      const changeTd = document.createElement('td');
+      if(i===0){ changeTd.textContent='—'; changeTd.classList.add('nochange'); }
+      else if(change>0){ changeTd.innerHTML=`▲ ${change} hPa`; changeTd.classList.add('up'); }
+      else if(change<0){ changeTd.innerHTML=`▼ ${Math.abs(change)} hPa`; changeTd.classList.add('down'); }
+      else { changeTd.textContent='±0.0'; changeTd.classList.add('nochange'); }
+
+      const [weatherText, weatherIcon] = weatherToTextIcon(item.weatherCode);
+
+      const symptomTd = document.createElement('td');
+      const sel = document.createElement('select');
+      sel.className='score';
+      const placeholderOpt = document.createElement('option');
+      placeholderOpt.textContent = '体調を入力';
+      placeholderOpt.value = '';
+      sel.appendChild(placeholderOpt);
+      SCORE_LABELS.forEach(lbl=>{
+        const opt=document.createElement('option');
+        opt.value=lbl;
+        opt.textContent=lbl;
+        sel.appendChild(opt);
       });
+      sel.value = symptomData[item.date] ?? '';
+      sel.addEventListener('change', e=>{
+        const val = e.target.value;
+        if(val) symptomData[item.date]=val;
+        else delete symptomData[item.date];
+        saveSymptomData();
+        updateChartData();
+      });
+      symptomTd.appendChild(sel);
 
-      const labels = filtered.map(d => d.date);
-      const data = filtered.map(d => d.mood);
+      tr.innerHTML=`<td>${item.date}</td><td>${item.pressure}</td>`;
+      tr.appendChild(changeTd);
+      tr.innerHTML+=`<td title="${weatherText}">${weatherIcon}</td>`;
+      tr.appendChild(symptomTd);
 
-      if (chart) chart.destroy();
+      tbody.appendChild(tr);
+    });
+  }
 
-      chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: '体調',
-            data: data,
-            borderColor: 'blue',
-            fill: false
-          }]
+  const ctx=document.getElementById('pressureChart').getContext('2d');
+  const weatherBgPlugin={
+    id:'weatherBg',
+    beforeDraw(chart){
+      const { ctx, chartArea:{left,right,top,bottom}, scales:{x} }=chart;
+      for(let i=0;i<dailyData.length;i++){
+        const wCode=dailyData[i].weatherCode;
+        const [, , bgColor] = weatherToTextIcon(wCode);
+        const xStart = i===0 ? left : x.getPixelForValue(dailyData[i].date);
+        const xEnd = (i<dailyData.length-1)?x.getPixelForValue(dailyData[i+1].date):right;
+        ctx.save();
+        ctx.fillStyle=bgColor;
+        ctx.globalAlpha=0.3;
+        ctx.fillRect(xStart,top,xEnd-xStart,bottom-top);
+        ctx.restore();
+      }
+    }
+  };
+
+  const chart = new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:dates,
+      datasets:[
+        {
+          label:'気圧 (hPa)',
+          data:dailyData.map(d=>d.pressure),
+          yAxisID:'yRight',
+          borderColor:'rgba(54, 162, 235, 1)',
+          backgroundColor:'rgba(54, 162, 235, 0.15)',
+          fill:true,
+          tension:0.3,
+          pointRadius:4,
+          order:2,
+          pointBackgroundColor:dailyData.map(d=>{
+            if(d.pressure>=1020) return 'orange';
+            if(d.pressure<=1005) return 'red';
+            return 'blue';
+          })
         },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { display: true }
-          },
-          scales: {
-            y: { min: 1, max: 5, ticks: { stepSize: 1 } }
+        {
+          label:'体調（1=とても悪い〜5=とても良い）',
+          data:dates.map(d=>{
+            const lbl = symptomData[d];
+            const sc = labelToScore(lbl);
+            return Number.isNaN(sc)?NaN:sc;
+          }),
+          yAxisID:'yLeft',
+          borderColor:'rgba(255, 99, 132, 1)',
+          backgroundColor:'rgba(255, 99, 132, 0.15)',
+          fill:true,
+          tension:0.3,
+          pointRadius:4,
+          order:1,
+          spanGaps:true
+        }
+      ]
+    },
+    options:{
+      responsive:true,
+      interaction:{ mode:'index', intersect:false },
+      stacked:false,
+      scales:{
+        yLeft:{
+          type:'linear', position:'left', min:1, max:5,
+          ticks:{ stepSize:1, callback:(v)=>scoreToLabel(v) },
+          title:{ display:true, text:'体調（テキストを数値化して表示）' }
+        },
+        yRight:{
+          type:'linear', position:'right',
+          min:Math.min(...dailyData.map(d=>d.pressure))-5,
+          max:Math.max(...dailyData.map(d=>d.pressure))+5,
+          grid:{ drawOnChartArea:false },
+          title:{ display:true, text:'気圧 (hPa)' }
+        },
+        x:{ title:{ display:true, text:'日付' } }
+      },
+      plugins:{
+        legend:{ position:'top' },
+        tooltip:{
+          enabled:true, mode:'nearest', intersect:false,
+          callbacks:{
+            label:(ctx)=>{
+              if(ctx.datasetIndex===1){
+                const v=ctx.parsed.y;
+                return `体調: ${Number.isFinite(v)?scoreToLabel(v):'未入力'}`;
+              }
+              return `${ctx.dataset.label}: ${ctx.formattedValue}`;
+            }
           }
         }
-      });
-    }
+      }
+    },
+    plugins:[weatherBgPlugin]
+  });
 
-    // 初期表示
-    updateChart(14);
-
-    // プルダウン変更時に更新
-    document.getElementById('periodSelect').addEventListener('change', (e) => {
-      updateChart(parseInt(e.target.value));
+  function updateChartData(){
+    chart.data.datasets[1].data = dates.map(d=>{
+      const lbl=symptomData[d];
+      const sc=labelToScore(lbl);
+      return Number.isNaN(sc)?NaN:sc;
     });
-  </script>
+    chart.update();
+  }
+
+  renderTable();
+
+  const toggleBtn=document.getElementById('toggleBtn');
+  const chartDiv=document.getElementById('chartContainer');
+  const tableDiv=document.getElementById('tableContainer');
+  toggleBtn.addEventListener('click',()=>{
+    if(chartDiv.style.display==='none'){
+      chartDiv.style.display='block';
+      tableDiv.style.display='none';
+      toggleBtn.textContent='表に切り替え';
+    } else {
+      chartDiv.style.display='none';
+      tableDiv.style.display='block';
+      toggleBtn.textContent='グラフに切り替え';
+    }
+  });
+
+})();
+</script>
 </body>
 </html>

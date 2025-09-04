@@ -12,19 +12,19 @@
       padding: 0;
       display: flex;
       justify-content: center;
-      align-items: center;
+      align-items: flex-start;
       flex-direction: column;
       min-height: 100vh;
       background: #f9f9f9;
     }
-    h1 { margin: 1em 0; }
-    #content { max-width: 900px; width: 95%; }
+    h1 { margin: 1em 0; text-align: center; }
+    #content { max-width: 900px; width: 95%; margin: auto; }
     #chartContainer { width: 100%; }
     table { border-collapse: collapse; width: 100%; margin-top: 1em; background: #fff; }
     th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
     th { background: #eee; }
+    input.memo { width: 90%; }
     label { display: block; margin-bottom: 1em; }
-    input.memo { width: 90%; padding: 2px 4px; }
   </style>
 </head>
 <body>
@@ -47,14 +47,19 @@
   </div>
 
   <script>
-  const LAT = 35.68, LON = 139.76;
+  const LAT = 35.68, LON = 139.76; // 東京
   const SCORE_LABELS = ["とても悪い","悪い","普通","良い","とても良い"];
+  const STORAGE_KEY = "userSymptomData"; // 過去の記録も読み込む
 
   let chart;
   let ctx = document.getElementById("pressureChart").getContext("2d");
   let dailyData = [];
   let symptomData = {};
-  let memoData = {};
+
+  // 過去データを読み込む
+  try {
+    symptomData = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+  } catch(e) { symptomData = {}; }
 
   async function fetchWeatherData(days){
     const start = new Date();
@@ -89,10 +94,15 @@
     return idx>=0 ? idx+1 : NaN;
   }
 
+  function saveData() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(symptomData));
+  }
+
   function renderTable(){
     const tbl = document.getElementById("dataTable");
     tbl.innerHTML = "<tr><th>日付</th><th>平均気圧</th><th>天気</th><th>体調</th><th>メモ</th></tr>";
 
+    // 新しい日付から順に表示
     const sorted = [...dailyData].sort((a,b)=> new Date(b.date) - new Date(a.date));
 
     sorted.forEach(row=>{
@@ -101,52 +111,51 @@
       tr.insertCell().textContent = row.pressure.toFixed(1);
       tr.insertCell().textContent = row.weather;
 
-      // 体調セレクト
+      // 体調プルダウン
       const sel = document.createElement("select");
       ["","とても悪い","悪い","普通","良い","とても良い"].forEach(l=>{
         const o = document.createElement("option");
         o.value = l; o.textContent = l;
-        if(symptomData[row.date]===l) o.selected = true;
+        if(symptomData[row.date]?.condition===l) o.selected = true;
         sel.appendChild(o);
       });
       sel.addEventListener("change",()=>{
-        symptomData[row.date] = sel.value;
+        if(!symptomData[row.date]) symptomData[row.date] = {};
+        symptomData[row.date].condition = sel.value;
+        saveData();
         updateChartData();
       });
       tr.insertCell().appendChild(sel);
 
-      // メモ入力
-      const memoInput = document.createElement("input");
-      memoInput.type = "text";
-      memoInput.className = "memo";
-      memoInput.maxLength = 100;
-      memoInput.value = memoData[row.date] || "";
-      memoInput.placeholder = "メモ (100文字以内)";
-      memoInput.addEventListener("input",()=>{
-        memoData[row.date] = memoInput.value;
+      // メモ欄
+      const input = document.createElement("input");
+      input.type = "text";
+      input.maxLength = 100;
+      input.value = symptomData[row.date]?.memo || "";
+      input.className = "memo";
+      input.addEventListener("input", ()=>{
+        if(!symptomData[row.date]) symptomData[row.date] = {};
+        symptomData[row.date].memo = input.value;
+        saveData();
       });
-      tr.insertCell().appendChild(memoInput);
+      tr.insertCell().appendChild(input);
     });
   }
 
   function updateChartData(){
-    const sortedAsc = [...dailyData].sort((a,b)=> new Date(a.date) - new Date(b.date));
-    const labels = sortedAsc.map(d=>d.date);
-    const pressureValues = sortedAsc.map(d=>d.pressure);
-    const healthValues = sortedAsc.map(d=>{
-      const sc = labelToScore(symptomData[d.date]);
+    const labels = dailyData.map(d=>d.date);
+    const values = dailyData.map(d=>{
+      const sc = labelToScore(symptomData[d.date]?.condition);
       return Number.isNaN(sc)?null:sc;
     });
-
     chart.data.labels = labels;
-    chart.data.datasets[0].data = pressureValues;
-    chart.data.datasets[1].data = healthValues;
+    chart.data.datasets[1].data = values;
     chart.update();
   }
 
   const weatherBgPlugin = {
     id:"weatherBg",
-    beforeDraw(chart,args,opts){
+    beforeDraw(chart){
       const {ctx,chartArea:{left,right,top,bottom},scales:{x}} = chart;
       ctx.save();
       dailyData.forEach((d,i)=>{

@@ -3,35 +3,53 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>気圧と体調ビューア</title>
+  <title>体調記録アプリ</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: sans-serif; margin: 1em; }
-    #chartContainer { max-width: 900px; margin: auto; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1em; }
-    th, td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      min-height: 100vh;
+      background: #f9f9f9;
+    }
+    h1 { margin: 1em 0; }
+    #content { max-width: 900px; width: 95%; }
+    #chartContainer { width: 100%; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1em; background: #fff; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
     th { background: #eee; }
+    label { display: block; margin-bottom: 1em; }
+    input.memo {
+      width: 95%;
+      max-width: 200px;
+    }
   </style>
 </head>
 <body>
-  <h1>気圧と体調ビューア</h1>
+  <div id="content">
+    <h1>体調記録アプリ</h1>
 
-  <label>表示期間:
-    <select id="periodSelect">
-      <option value="7">1週間</option>
-      <option value="14" selected>2週間</option>
-      <option value="30">1ヶ月</option>
-    </select>
-  </label>
+    <label>表示期間:
+      <select id="periodSelect">
+        <option value="7">1週間</option>
+        <option value="14" selected>2週間</option>
+        <option value="30">1ヶ月</option>
+      </select>
+    </label>
 
-  <div id="chartContainer">
-    <canvas id="pressureChart"></canvas>
+    <div id="chartContainer">
+      <canvas id="pressureChart"></canvas>
+    </div>
+
+    <table id="dataTable"></table>
   </div>
 
-  <table id="dataTable"></table>
-
   <script>
-  const API_KEY = "demo"; // ←必要に応じてOpen-MeteoのAPIキー
   const LAT = 35.68, LON = 139.76; // 東京
   const SCORE_LABELS = ["とても悪い","悪い","普通","良い","とても良い"];
 
@@ -39,6 +57,7 @@
   let ctx = document.getElementById("pressureChart").getContext("2d");
   let dailyData = [];
   let symptomData = {};
+  let memoData = {}; // ← 追加: メモを保存するオブジェクト
 
   async function fetchWeatherData(days){
     const start = new Date();
@@ -75,9 +94,9 @@
 
   function renderTable(){
     const tbl = document.getElementById("dataTable");
-    tbl.innerHTML = "<tr><th>日付</th><th>平均気圧</th><th>天気</th><th>体調</th></tr>";
+    tbl.innerHTML = "<tr><th>日付</th><th>平均気圧</th><th>天気</th><th>体調</th><th>メモ</th></tr>";
 
-    // 新しい日付を上にする（降順ソート）
+    // 新しい日付から順に表示（降順）
     const sorted = [...dailyData].sort((a,b)=> new Date(b.date) - new Date(a.date));
 
     sorted.forEach(row=>{
@@ -85,9 +104,10 @@
       tr.insertCell().textContent = row.date;
       tr.insertCell().textContent = row.pressure.toFixed(1);
 
-      // 天気コードそのまま表示（わかりやすくするなら変換表を追加可）
+      // 天気コードそのまま表示（変換する場合はここに処理を追加）
       tr.insertCell().textContent = row.weather;
 
+      // ▼ 体調セレクトボックス
       const sel = document.createElement("select");
       ["","とても悪い","悪い","普通","良い","とても良い"].forEach(l=>{
         const o = document.createElement("option");
@@ -99,8 +119,19 @@
         symptomData[row.date] = sel.value;
         updateChartData();
       });
-      const td = tr.insertCell();
-      td.appendChild(sel);
+      tr.insertCell().appendChild(sel);
+
+      // ▼ メモ入力欄
+      const memoInput = document.createElement("input");
+      memoInput.type = "text";
+      memoInput.className = "memo";
+      memoInput.maxLength = 100;
+      memoInput.value = memoData[row.date] || "";
+      memoInput.placeholder = "メモを入力 (100文字以内)";
+      memoInput.addEventListener("input",()=>{
+        memoData[row.date] = memoInput.value;
+      });
+      tr.insertCell().appendChild(memoInput);
     });
   }
 
